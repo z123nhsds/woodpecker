@@ -1,0 +1,34 @@
+when:
+  - event: pull_request
+    path:
+      - 'server/**/*.go'
+
+steps:
+  lint:
+    image: golangci/golangci-lint:v1.55.2
+    commands:
+      - golangci-lint run ./server/...
+
+  test:
+    depends_on:
+      - lint
+    image: golang:1.22
+    commands:
+      - go test -race -coverprofile=coverage.txt -covermode=atomic ./server/...
+      - COVERAGE=$(go tool cover -func=coverage.txt | grep total | awk '{print substr($3, 1, length($3)-1)}')
+      - echo "Current coverage is ${COVERAGE}%"
+      - |
+        if awk "BEGIN {exit !($COVERAGE < 60)}"; then
+          echo "Error: Test coverage is lower than 60%"
+          exit 1
+        fi
+
+  codecov:
+    depends_on:
+      - test
+    image: docker.io/woodpeckerci/plugin-codecov:2.3.1
+    settings:
+      files:
+        - coverage.txt
+      token:
+        from_secret: codecov_token

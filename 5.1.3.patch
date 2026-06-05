@@ -1,0 +1,167 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 47067d5fc..06fb11b1d 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -41,19 +41,19 @@ repos:
+         args: [--strict, -c=.yamllint.yaml]
+   - repo: local
+     hooks:
+-      - id: yaml-file-extension
+-        name: Check if YAML files has *.yaml extension.
+-        entry: YAML filenames must have .yaml extension.
+-        language: fail
+-        files: .yml$
+-        exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
++      - id: forbid-fmt-println
++        name: Forbid fmt.Println
++        entry: >-
++          bash -c 'if grep -Hn "fmt\.Println" "$@"; then echo "Error: fmt.Println is not allowed in Go files"; exit 1; fi' --
++        language: system
++        files: '\.go$'
++        exclude: '_test\.go$'
+ 
+ ci:
+   autofix_commit_msg: |
+     [pre-commit.ci] auto fixes from pre-commit.com hooks [CI SKIP]
+ 
+     for more information, see https://pre-commit.ci
+-  autofix_prs: true
+   autoupdate_branch: ''
+   autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+   autoupdate_schedule: quarterly
+diff --git a/.woodpecker/test.yaml b/.woodpecker/test.yaml
+index 025f2981a..cb51a456b 100644
+--- a/.woodpecker/test.yaml
++++ b/.woodpecker/test.yaml
+@@ -13,11 +13,6 @@ variables:
+         - Makefile
+         - 'codecov.yaml'
+       event: pull_request
+-
+-when:
+-  - event: pull_request
+-  - event: push
+-    branch: ${CI_REPO_DEFAULT_BRANCH}
+     path: *when_path
+ 
+ steps:
+@@ -32,13 +27,7 @@ steps:
+ 
+   lint-pipeline:
+     depends_on:
+-      - vendor
+-    image: *golang_image
+-    commands:
+-      - go run go.woodpecker-ci.org/woodpecker/v3/cmd/cli lint
+-    environment:
+-      WOODPECKER_DISABLE_UPDATE_CHECK: true
+-      WOODPECKER_LINT_STRICT: true
++        - <<: *when_path
+       WOODPECKER_PLUGINS_PRIVILEGED: 'docker.io/woodpeckerci/plugin-docker-buildx'
+     when:
+       - event: pull_request
+@@ -71,38 +60,6 @@ steps:
+       - '[ -n "$DIFF" ] && { echo "openapi not up to date, exec `make generate-openapi` and commit"; exit 1; } || true'
+     when: *when
+ 
+-  lint-license-header:
+-    image: *golang_image
+-    commands:
+-      - make install-addlicense # cspell:words addlicense
+-      - bash -c 'shopt -s globstar; addlicense -check -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go'
+-    when: *when
+-
+-  test:
+-    depends_on:
+-      - vendor
+-    image: *golang_image
+-    commands:
+-      - make test-agent
+-      - make test-server
+-      - make test-cli
+-      - make test-lib
+-    when:
+-      - path: *when_path
+-
+-  test-e2e:
+-    depends_on:
+-      - vendor
+-    image: *golang_image
+-    commands:
+-      - make test-e2e
+-    when:
+-      - path: *when_path
+-
+-  sqlite:
+-    depends_on:
+-      - vendor
+-    image: *golang_image
+     environment:
+       WOODPECKER_DATABASE_DRIVER: sqlite3
+     commands:
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..b3b910913 100644
+--- a/Makefile
++++ b/Makefile
+@@ -16,12 +16,6 @@ ifeq ($(TARGETOS),windows)
+ endif
+ 
+ DIST_DIR ?= dist
+-
+-VERSION ?= next
+-VERSION_NUMBER ?= 0.0.0
+-CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
+-
+-# it's a tagged release
+ ifneq ($(CI_COMMIT_TAG),)
+ 	VERSION := $(CI_COMMIT_TAG:v%=%)
+ 	VERSION_NUMBER := ${CI_COMMIT_TAG:v%=%}
+@@ -126,6 +120,17 @@ generate-openapi: ## Run openapi code generation and format it
+ 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
+ 	CGO_ENABLED=0 go generate cmd/server/openapi.go
+ 
++generate-vue-client: ## Generate Vue API client from OpenAPI spec
++	@echo "Starting backend server..."
++	WOODPECKER_OPEN=false go run cmd/server/main.go & echo $$! > server.PID
++	@echo "Waiting for backend..." && sleep 3
++	@echo "Generating API client..."
++	cd web && npx @openapitools/openapi-generator-cli generate -i http://localhost:8000/api/swagger.json -g typescript-axios -o src/api
++	@echo "Validating types..."
++	cd web && npx vue-tsc --noEmit
++	@echo "Stopping backend server..."
++	kill $$(cat server.PID) && rm server.PID
++
+ generate-license-header: install-addlicense
+ 	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
+ 
+@@ -150,30 +155,6 @@ install-addlicense:
+ 	fi
+ 
+ install-mockery:
+-	@hash mockery > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install github.com/vektra/mockery/v3@latest; \
+-	fi
+-
+-install-protoc-gen-go:
+-	@hash protoc-gen-go > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/protobuf/cmd/protoc-gen-go@latest; \
+-	fi ; \
+-	hash protoc-gen-go-grpc > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest; \
+-	fi
+-
+-.PHONY: install-tools
+-install-tools: install-golangci-lint install-gofumpt install-addlicense install-mockery install-protoc-gen-go ## Install development tools
+-
+-ui-dependencies: ## Install UI dependencies
+-	(cd web/; pnpm install --frozen-lockfile)
+-
+-##@ Test
+-
+-.PHONY: lint
+-lint: install-golangci-lint ## Lint code
+-	@echo "Running golangci-lint"
+-	golangci-lint run
+ 
+ lint-ui: ui-dependencies ## Lint UI code
+ 	(cd web/; pnpm lint --quiet)

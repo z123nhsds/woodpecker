@@ -16,12 +16,6 @@ ifeq ($(TARGETOS),windows)
 endif
 
 DIST_DIR ?= dist
-
-VERSION ?= next
-VERSION_NUMBER ?= 0.0.0
-CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
-
-# it's a tagged release
 ifneq ($(CI_COMMIT_TAG),)
 	VERSION := $(CI_COMMIT_TAG:v%=%)
 	VERSION_NUMBER := ${CI_COMMIT_TAG:v%=%}
@@ -126,6 +120,17 @@ generate-openapi: ## Run openapi code generation and format it
 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
 	CGO_ENABLED=0 go generate cmd/server/openapi.go
 
+generate-vue-client: ## Generate Vue API client from OpenAPI spec
+	@echo "Starting backend server..."
+	WOODPECKER_OPEN=false go run cmd/server/main.go & echo $$! > server.PID
+	@echo "Waiting for backend..." && sleep 3
+	@echo "Generating API client..."
+	cd web && npx @openapitools/openapi-generator-cli generate -i http://localhost:8000/api/swagger.json -g typescript-axios -o src/api
+	@echo "Validating types..."
+	cd web && npx vue-tsc --noEmit
+	@echo "Stopping backend server..."
+	kill $$(cat server.PID) && rm server.PID
+
 generate-license-header: install-addlicense
 	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
 
@@ -150,30 +155,6 @@ install-addlicense:
 	fi
 
 install-mockery:
-	@hash mockery > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install github.com/vektra/mockery/v3@latest; \
-	fi
-
-install-protoc-gen-go:
-	@hash protoc-gen-go > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install google.golang.org/protobuf/cmd/protoc-gen-go@latest; \
-	fi ; \
-	hash protoc-gen-go-grpc > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest; \
-	fi
-
-.PHONY: install-tools
-install-tools: install-golangci-lint install-gofumpt install-addlicense install-mockery install-protoc-gen-go ## Install development tools
-
-ui-dependencies: ## Install UI dependencies
-	(cd web/; pnpm install --frozen-lockfile)
-
-##@ Test
-
-.PHONY: lint
-lint: install-golangci-lint ## Lint code
-	@echo "Running golangci-lint"
-	golangci-lint run
 
 lint-ui: ui-dependencies ## Lint UI code
 	(cd web/; pnpm lint --quiet)

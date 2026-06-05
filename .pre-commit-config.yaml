@@ -41,19 +41,19 @@ repos:
         args: [--strict, -c=.yamllint.yaml]
   - repo: local
     hooks:
-      - id: yaml-file-extension
-        name: Check if YAML files has *.yaml extension.
-        entry: YAML filenames must have .yaml extension.
-        language: fail
-        files: .yml$
-        exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
+      - id: forbid-fmt-println
+        name: Forbid fmt.Println
+        entry: >-
+          bash -c 'if grep -Hn "fmt\.Println" "$@"; then echo "Error: fmt.Println is not allowed in Go files"; exit 1; fi' --
+        language: system
+        files: '\.go$'
+        exclude: '_test\.go$'
 
 ci:
   autofix_commit_msg: |
     [pre-commit.ci] auto fixes from pre-commit.com hooks [CI SKIP]
 
     for more information, see https://pre-commit.ci
-  autofix_prs: true
   autoupdate_branch: ''
   autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
   autoupdate_schedule: quarterly

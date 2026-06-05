@@ -1,9 +1,86 @@
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 47067d5fc..bb1e6f42f 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -41,12 +41,6 @@ repos:
+         args: [--strict, -c=.yamllint.yaml]
+   - repo: local
+     hooks:
+-      - id: yaml-file-extension
+-        name: Check if YAML files has *.yaml extension.
+-        entry: YAML filenames must have .yaml extension.
+-        language: fail
+-        files: .yml$
+-        exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
+ 
+ ci:
+   autofix_commit_msg: |
 diff --git a/5.2.1.patch b/5.2.1.patch
-new file mode 100644
-index 000000000..4610c3d0d
---- /dev/null
+index 802020e9a..e69de29bb 100644
+--- a/5.2.1.patch
 +++ b/5.2.1.patch
-@@ -0,0 +1,3 @@
-+diff --git a/5.2.1.patch b/5.2.1.patch
-+new file mode 100644
-+index 000000000..e69de29bb
+@@ -1,9 +0,0 @@
+-diff --git a/5.2.1.patch b/5.2.1.patch
+-new file mode 100644
+-index 000000000..4610c3d0d
+---- /dev/null
+-+++ b/5.2.1.patch
+-@@ -0,0 +1,3 @@
+-+diff --git a/5.2.1.patch b/5.2.1.patch
+-+new file mode 100644
+-+index 000000000..e69de29bb
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..1f7ef41b9 100644
+--- a/Makefile
++++ b/Makefile
+@@ -126,50 +126,6 @@ generate-openapi: ## Run openapi code generation and format it
+ 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
+ 	CGO_ENABLED=0 go generate cmd/server/openapi.go
+ 
+-generate-license-header: install-addlicense
+-	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
+-
+-check-xgo: ## Check if xgo is installed
+-	@hash xgo > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		$(GO) install src.techknowlogick.com/xgo@latest; \
+-	fi
+-
+-install-golangci-lint:
+-	@hash golangci-lint > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) ; \
+-	fi
+-
+-install-gofumpt:
+-	@hash gofumpt > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION); \
+-	fi
+-
+-install-addlicense:
+-	@hash addlicense > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install github.com/google/addlicense@latest; \
+-	fi
+-
+-install-mockery:
+-	@hash mockery > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install github.com/vektra/mockery/v3@latest; \
+-	fi
+-
+-install-protoc-gen-go:
+-	@hash protoc-gen-go > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/protobuf/cmd/protoc-gen-go@latest; \
+-	fi ; \
+-	hash protoc-gen-go-grpc > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest; \
+-	fi
+-
+-.PHONY: install-tools
+-install-tools: install-golangci-lint install-gofumpt install-addlicense install-mockery install-protoc-gen-go ## Install development tools
+-
+-ui-dependencies: ## Install UI dependencies
+-	(cd web/; pnpm install --frozen-lockfile)
+-
+-##@ Test
+-
+ .PHONY: lint
+ lint: install-golangci-lint ## Lint code
+ 	@echo "Running golangci-lint"

@@ -1,0 +1,50 @@
+variables:
+  - &golang_image 'docker.io/golang:1.26'
+  - &when_server_path
+      - 'server/**/*.go'
+      - 'cmd/server/**/*.go'
+      - 'go.*'
+      - '.golangci.yaml'
+      - '.woodpecker/server.yaml'
+      - 'codecov.yaml'
+  - &when_pull_request
+      event: pull_request
+      path: *when_server_path
+
+when: *when_pull_request
+
+steps:
+  vendor:
+    image: *golang_image
+    commands:
+      - go mod vendor
+
+  lint:
+    depends_on:
+      - vendor
+    image: golangci/golangci-lint:v2.12.2
+    commands:
+      - golangci-lint run
+
+  test:
+    depends_on:
+      - lint
+    image: *golang_image
+    commands:
+      - make test-server
+      - make test-server-datastore-coverage
+      - go tool cover -func=server-coverage.out | grep total | awk '{if ($3+0 < 60.0) { print "Coverage too low: " $3; exit 1 } else { print "Coverage acceptable: " $3 }}'
+      - go tool cover -func=datastore-coverage.out | grep total | awk '{if ($3+0 < 60.0) { print "Coverage too low: " $3; exit 1 } else { print "Coverage acceptable: " $3 }}'
+
+  codecov:
+    depends_on:
+      - test
+    pull: true
+    image: docker.io/woodpeckerci/plugin-codecov:2.3.1
+    settings:
+      files:
+        - server-coverage.out
+        - datastore-coverage.out
+      token:
+        from_secret: codecov_token
+    failure: ignore

@@ -47,6 +47,13 @@ repos:
         language: fail
         files: .yml$
         exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
+      - id: no-fmt-println
+        name: Check for fmt.Println in Go files
+        entry: 'Found fmt.Println! Please remove debug print statements.'
+        language: pygrep
+        types: [go]
+        pattern: 'fmt\.Println|fmt\.Print|fmt\.Printf'
+        exclude: '^vendor/|^cmd/server/openapi/'
 
 ci:
   autofix_commit_msg: |

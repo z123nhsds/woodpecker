@@ -126,6 +126,29 @@ generate-openapi: ## Run openapi code generation and format it
 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
 	CGO_ENABLED=0 go generate cmd/server/openapi.go
 
+generate-web-api-client: generate-openapi ui-dependencies ## Generate web Vue API client from OpenAPI spec
+	@echo "Generating web API client..."
+	(cd web/; pnpm dlx @openapitools/openapi-generator-cli generate \
+		-i ../docs/openapi.json \
+		-g typescript-fetch \
+		-o src/lib/api/generated \
+		--additional-properties=typescriptThreePlus=true,supportsES6=true,withInterfaces=true)
+	(cd web/; pnpm run typecheck)
+
+start-server-for-api-gen: ## Start server in background for API generation
+	@echo "Starting server in background..."
+	CGO_ENABLED=0 go run -tags test cmd/server/main.go &
+	@echo $$! > .server.pid
+	@echo "Server started with PID $$(cat .server.pid)"
+	@sleep 5  # Wait for server to start
+
+stop-server-for-api-gen: ## Stop background server
+	@if [ -f .server.pid ]; then \
+		kill $$(cat .server.pid) 2>/dev/null || true; \
+		rm -f .server.pid; \
+		echo "Server stopped"; \
+	fi
+
 generate-license-header: install-addlicense
 	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
 

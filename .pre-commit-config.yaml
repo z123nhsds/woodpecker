@@ -41,19 +41,19 @@ repos:
         args: [--strict, -c=.yamllint.yaml]
   - repo: local
     hooks:
+      - id: forbid-added-fmt-println
+        name: Reject newly added fmt.Println in Go files.
+        entry: "bash -ec 'if git diff --cached --unified=0 -- \"$@\" | grep -E \"^\\+.*fmt\\.Println\\s*\\(\" >/dev/null; then echo \"Remove fmt.Println debug statements before committing.\"; exit 1; fi' --"
+        language: system
+        types: [go]
+        pass_filenames: true
       - id: yaml-file-extension
         name: Check if YAML files has *.yaml extension.
         entry: YAML filenames must have .yaml extension.
         language: fail
         files: .yml$
         exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
-
 ci:
-  autofix_commit_msg: |
-    [pre-commit.ci] auto fixes from pre-commit.com hooks [CI SKIP]
-
-    for more information, see https://pre-commit.ci
-  autofix_prs: true
   autoupdate_branch: ''
   autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
   autoupdate_schedule: quarterly

@@ -13,6 +13,11 @@ variables:
         - Makefile
         - 'codecov.yaml'
       event: pull_request
+  - &server_pr_when
+    - event: pull_request
+      path:
+        - 'server/*.go'
+        - 'server/**/*.go'
 
 when:
   - event: pull_request
@@ -27,7 +32,13 @@ steps:
       - go mod vendor
     when:
       path:
-        - <<: *when_path
+        - '.woodpecker/test.yaml'
+        - '.golangci.yaml'
+        - '**/*.go'
+        - 'go.*'
+        - 'pipeline/schema/**'
+        - Makefile
+        - 'codecov.yaml'
         - '.woodpecker/**'
 
   lint-pipeline:
@@ -60,6 +71,38 @@ steps:
     commands:
       - make lint
     when: *when
+
+  lint-server-pr:
+    depends_on:
+      - vendor
+    image: golangci/golangci-lint:v2.12.2
+    commands:
+      - golangci-lint run ./cmd/server/... ./server/...
+    when: *server_pr_when
+
+  test-server-pr:
+    depends_on:
+      - lint-server-pr
+    image: *golang_image
+    commands:
+      - go test -race -cover -coverprofile server-pr-coverage.out -timeout 60s -tags 'test' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
+      - |
+        coverage="$(go tool cover -func=server-pr-coverage.out | tee /dev/stderr | awk '/^total:/ { gsub(/%/, "", $3); print $3 }')"
+        awk "BEGIN { if (${coverage:-0} < 60) { printf(\"server coverage %s%% is below 60%%\\n\", \"${coverage:-0}\"); exit 1 } }"
+    when: *server_pr_when
+
+  codecov-server-pr:
+    depends_on:
+      - test-server-pr
+    pull: true
+    image: docker.io/woodpeckerci/plugin-codecov:2.3.1
+    settings:
+      files:
+        - server-pr-coverage.out
+      token:
+        from_secret: codecov_token
+    when: *server_pr_when
+    failure: ignore
 
   check-openapi:
     depends_on:

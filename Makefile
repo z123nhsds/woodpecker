@@ -16,6 +16,12 @@ ifeq ($(TARGETOS),windows)
 endif
 
 DIST_DIR ?= dist
+OPENAPI_URL ?= http://127.0.0.1:8000/swagger/doc.json
+WEB_API_CLIENT_DIR ?= web/src/lib/api/generated
+WOODPECKER_DEV_HOST ?= http://localhost:8000
+WOODPECKER_DEV_ADMIN ?= admin
+WOODPECKER_DEV_SERVER ?= localhost:9000
+WOODPECKER_DEV_AGENT_SECRET ?= woodpecker-dev-secret
 
 VERSION ?= next
 VERSION_NUMBER ?= 0.0.0
@@ -126,29 +132,6 @@ generate-openapi: ## Run openapi code generation and format it
 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
 	CGO_ENABLED=0 go generate cmd/server/openapi.go
 
-generate-license-header: install-addlicense
-	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
-
-check-xgo: ## Check if xgo is installed
-	@hash xgo > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		$(GO) install src.techknowlogick.com/xgo@latest; \
-	fi
-
-install-golangci-lint:
-	@hash golangci-lint > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION) ; \
-	fi
-
-install-gofumpt:
-	@hash gofumpt > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install mvdan.cc/gofumpt@$(GOFUMPT_VERSION); \
-	fi
-
-install-addlicense:
-	@hash addlicense > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
-		go install github.com/google/addlicense@latest; \
-	fi
-
 install-mockery:
 	@hash mockery > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
 		go install github.com/vektra/mockery/v3@latest; \
@@ -167,6 +150,30 @@ install-tools: install-golangci-lint install-gofumpt install-addlicense install-
 
 ui-dependencies: ## Install UI dependencies
 	(cd web/; pnpm install --frozen-lockfile)
+
+.PHONY: web-api-client-generate
+web-api-client-generate: ui-dependencies ## Generate the web API client from the running server OpenAPI spec
+	(cd web/; pnpm dlx openapi-typescript-codegen --client fetch --input $(OPENAPI_URL) --output $(patsubst web/%,%,$(WEB_API_CLIENT_DIR)))
+
+.PHONY: web-api-client-typecheck
+web-api-client-typecheck: ui-dependencies ## Type-check the web API client
+	(cd web/; pnpm run typecheck)
+
+.PHONY: web-api-client
+web-api-client: ui-dependencies ## Start the server, generate the web API client, and type-check it
+	@server_pid=""; \
+	trap 'if [ -n "$$server_pid" ]; then kill "$$server_pid"; wait "$$server_pid" || true; fi' EXIT; \
+	WOODPECKER_OPEN=true \
+	WOODPECKER_ADMIN=$(WOODPECKER_DEV_ADMIN) \
+	WOODPECKER_HOST=$(WOODPECKER_DEV_HOST) \
+	WOODPECKER_SERVER=$(WOODPECKER_DEV_SERVER) \
+	WOODPECKER_AGENT_SECRET=$(WOODPECKER_DEV_AGENT_SECRET) \
+	WOODPECKER_DATABASE_DRIVER=sqlite3 \
+	go run ./cmd/server > /tmp/woodpecker-web-api-client-server.log 2>&1 & \
+	server_pid="$$!"; \
+	until curl -fsS $(OPENAPI_URL) > /dev/null; do sleep 1; done; \
+	$(MAKE) web-api-client-generate OPENAPI_URL=$(OPENAPI_URL) WEB_API_CLIENT_DIR=$(WEB_API_CLIENT_DIR); \
+	$(MAKE) web-api-client-typecheck
 
 ##@ Test
 

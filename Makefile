@@ -120,17 +120,6 @@ clean-all: clean ## Clean all artifacts
 .PHONY: generate
 generate: install-mockery generate-openapi ## Run all code generations
 	mockery
-	CGO_ENABLED=0 go generate ./...
-
-generate-openapi: ## Run openapi code generation and format it
-	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
-	CGO_ENABLED=0 go generate cmd/server/openapi.go
-
-generate-license-header: install-addlicense
-	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
-
-check-xgo: ## Check if xgo is installed
-	@hash xgo > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
 		$(GO) install src.techknowlogick.com/xgo@latest; \
 	fi
 
@@ -407,5 +396,40 @@ man-server: ## Generate man pages for server
 
 .PHONY: man
 man: man-cli man-agent man-server ## Generate all man pages
+
+##@ OpenAPI / API Client
+
+.PHONY: generate-api-client
+generate-api-client: build-server ## Generate Vue API client from OpenAPI spec
+	@echo "Starting Woodpecker server..." && \
+	WOODPECKER_OPEN=false \
+	WOODPECKER_DATABASE_DRIVER=sqlite3 \
+	WOODPECKER_DATABASE_DATASOURCE=file::memory:?cache=shared \
+	./${DIST_DIR}/woodpecker-server & \
+	SERVER_PID=$$! && \
+	echo "Waiting for server to be ready (PID: $$SERVER_PID)..." && \
+	for i in $$(seq 1 30); do \
+		if curl -s http://localhost:8000/api/swagger/doc.json > /dev/null 2>&1; then \
+			echo "Server is ready."; \
+			break; \
+		fi; \
+		if [ $$i -eq 30 ]; then \
+			echo "Server failed to start within 30s"; \
+			kill $$SERVER_PID 2>/dev/null || true; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done && \
+	echo "Fetching OpenAPI spec..." && \
+	curl -s http://localhost:8000/api/swagger/doc.json -o docs/openapi.json && \
+	echo "Generating Vue API client..." && \
+	(cd web/ && pnpm install --frozen-lockfile) && \
+	(cd web/ && pnpm exec openapi-typescript ../docs/openapi.json -o src/api/openapi.ts) && \
+	echo "Stopping server..." && \
+	kill $$SERVER_PID 2>/dev/null || true && \
+	wait $$SERVER_PID 2>/dev/null || true && \
+	echo "Validating types with vue-tsc..." && \
+	(cd web/ && pnpm run typecheck) && \
+	echo "API client generated and types validated successfully."
 
 endif

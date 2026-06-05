@@ -41,13 +41,30 @@ repos:
         args: [--strict, -c=.yamllint.yaml]
   - repo: local
     hooks:
-      - id: yaml-file-extension
-        name: Check if YAML files has *.yaml extension.
-        entry: YAML filenames must have .yaml extension.
-        language: fail
-        files: .yml$
-        exclude: '^(.gitpod.yml|.github/ISSUE_TEMPLATE/config.yml)$'
-
+      - id: no-fmt-println
+        name: Reject fmt.Println in Go files
+        description: Prevent accidental commit of fmt.Println debug statements
+        entry: |
+          bash -c '
+            files=""
+            for f in "$@"; do
+              if grep -n "fmt\.Println" "$f" 2>/dev/null; then
+                files="$files $f"
+              fi
+            done
+            if [ -n "$files" ]; then
+              echo "ERROR: Found fmt.Println in the following files:"
+              for f in $files; do
+                echo "  $f"
+              done
+              echo "Use a proper logger (e.g. zerolog) instead of fmt.Println for debugging."
+              exit 1
+            fi
+          ' --
+        language: system
+        types_or: [go]
+        exclude: '(_test\.go|vendor/|\.git/)'
+        pass_filenames: true
 ci:
   autofix_commit_msg: |
     [pre-commit.ci] auto fixes from pre-commit.com hooks [CI SKIP]

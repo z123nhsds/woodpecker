@@ -1,0 +1,40 @@
+when:
+  - event: pull_request
+    path:
+      include:
+        - server/**/*.go
+        - cmd/server/**/*.go
+      on_empty: false
+
+steps:
+  - name: golangci-lint
+    image: golangci/golangci-lint:v2.12.2
+    commands:
+      - golangci-lint run --timeout=15m ./server/... ./cmd/server/...
+    depends_on: []
+
+  - name: go-test
+    image: golang:1.26
+    commands:
+      - go test -race -cover -coverprofile=server-coverage.out -timeout 60s -tags 'test' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(shell go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
+      - go test -race -cover -coverprofile=datastore-coverage.out -timeout 300s -tags 'test' -skip TestMigrate go.woodpecker-ci.org/woodpecker/v3/server/store/...
+      - |
+        COVERAGE=$(go tool cover -func=server-coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        if (( $(echo "$COVERAGE < 60" | bc -l) )); then
+          echo "Coverage $COVERAGE% is below required 60%"
+          exit 1
+        fi
+        echo "Coverage $COVERAGE% meets the requirement ≥60%"
+    depends_on:
+      - golangci-lint
+
+  - name: codecov
+    image: codecov/codecov-action
+    commands:
+      - ./codecov -f server-coverage.out -F server
+      - ./codecov -f datastore-coverage.out -F server-datastore
+    depends_on:
+      - go-test
+    secrets: [CODECOV_TOKEN]
+    when:
+      - status: [success]

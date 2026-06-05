@@ -1,0 +1,38 @@
+when:
+  - event: pull_request
+    paths:
+      include:
+        - "server/**/*.go"
+        - "cmd/server/**/*.go"
+
+steps:
+  lint:
+    image: golangci/golangci-lint:v2.12.2
+    commands:
+      - golangci-lint run ./server/... ./cmd/server/...
+
+  test:
+    image: golang:1.24
+    depends_on:
+      - lint
+    environment:
+      CGO_ENABLED: "1"
+    commands:
+      - go test -race -cover -coverprofile server-coverage.out -timeout 60s -tags 'test' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
+      - |
+        COVERAGE=$(go tool cover -func server-coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+        echo "Total coverage: ${COVERAGE}%"
+        if [ "$(echo "$COVERAGE < 60" | bc -l)" -eq 1 ]; then
+          echo "Coverage ${COVERAGE}% is below 60% threshold"
+          exit 1
+        fi
+
+  codecov:
+    image: woodpeckerci/plugin-codecov:next
+    depends_on:
+      - test
+    settings:
+      files:
+        - server-coverage.out
+      token:
+        from_secret: codecov_token

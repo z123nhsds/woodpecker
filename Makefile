@@ -126,6 +126,50 @@ generate-openapi: ## Run openapi code generation and format it
 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
 	CGO_ENABLED=0 go generate cmd/server/openapi.go
 
+OPENAPI_SPEC_URL ?= http://localhost:8000/openapi.json
+OPENAPI_SPEC_FILE ?= docs/openapi.json
+WEB_API_DIR ?= web/src/lib/api/types
+
+.PHONY: generate-api-client
+generate-api-client: generate-openapi start-server-backend generate-api-types validate-api-types ## Generate Vue API client from OpenAPI spec (start backend, generate types, validate)
+
+.PHONY: start-server-backend
+start-server-backend: ## Start backend server to serve OpenAPI spec
+	@echo "Starting Woodpecker server in background..."
+	@$(MAKE) build-server > /dev/null 2>&1
+	WOODPECKER_OPEN=true ./dist/woodpecker-server &
+	@echo "Waiting for server to be ready..."
+	@for i in $$(seq 1 30); do \
+		if curl -sf $(OPENAPI_SPEC_URL) > /dev/null 2>&1; then \
+			echo "Server is ready"; \
+			break; \
+		fi; \
+		if [ "$$i" = "30" ]; then \
+			echo "Server failed to start"; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done
+	@curl -sf $(OPENAPI_SPEC_URL) -o $(OPENAPI_SPEC_FILE)
+	@echo "OpenAPI spec saved to $(OPENAPI_SPEC_FILE)"
+
+.PHONY: stop-server-backend
+stop-server-backend: ## Stop the background Woodpecker server
+	@pkill -f "woodpecker-server" 2>/dev/null || true
+
+.PHONY: generate-api-types
+generate-api-types: ui-dependencies ## Generate TypeScript types from OpenAPI spec
+	@echo "Generating TypeScript API client..."
+	cd web/ && npx openapi-typescript $(OPENAPI_SPEC_FILE) -o $(WEB_API_DIR)/api.d.ts
+	@echo "API types generated at $(WEB_API_DIR)/api.d.ts"
+
+.PHONY: validate-api-types
+validate-api-types: generate-api-types ## Validate generated TypeScript types
+	@echo "Validating TypeScript types..."
+	cd web/ && pnpm run typecheck
+	@$(MAKE) stop-server-backend
+	@echo "API client generation and validation complete"
+
 generate-license-header: install-addlicense
 	addlicense -c "Woodpecker Authors" -l apache -ignore "vendor/**" -ignore cmd/server/openapi/docs.go **/*.go
 
@@ -397,15 +441,3 @@ build-docs: generate-docs docs-dependencies ## Build the docs
 man-cli: ## Generate man pages for cli
 	mkdir -p dist/ && CGO_ENABLED=0 go run -tags man cmd/cli/man.go cmd/cli/app.go > dist/woodpecker-cli.man.1 && gzip -9 -f dist/woodpecker-cli.man.1
 
-.PHONY: man-agent
-man-agent: ## Generate man pages for agent
-	mkdir -p dist/ && CGO_ENABLED=0 go run -tags man cmd/agent/man.go > dist/woodpecker-agent.man.1 && gzip -9 -f dist/woodpecker-agent.man.1
-
-.PHONY: man-server
-man-server: ## Generate man pages for server
-	mkdir -p dist/ && CGO_ENABLED=0 go run -tags man go.woodpecker-ci.org/woodpecker/v3/cmd/server > dist/woodpecker-server.man.1 && gzip -9 -f dist/woodpecker-server.man.1
-
-.PHONY: man
-man: man-cli man-agent man-server ## Generate all man pages
-
-endif

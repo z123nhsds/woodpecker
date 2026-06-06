@@ -1,0 +1,1138 @@
+diff --git a/5.3.4.patch b/5.3.4.patch
+new file mode 100644
+index 000000000..e69de29bb
+diff --git a/REFACTORING_DESIGN.md b/REFACTORING_DESIGN.md
+new file mode 100644
+index 000000000..c81ea2cde
+--- /dev/null
++++ b/REFACTORING_DESIGN.md
+@@ -0,0 +1,1129 @@
++# Woodpecker CI 四模块重构设计
++
++> 基于 server / agent / cli / web 四模块架构的三项重构设计
++
++---
++
++## 一、Repository 模式重构
++
++### 1.1 现状分析
++
++当前 `server/api` 通过 `store.FromContext(c)` 直接获取一个包含约 130 个方法的巨型 `Store` 接口，违反了**接口隔离原则（ISP）**和**单一职责原则（SRP）**。
++
++**现状代码路径**：[server/api/users.go](file:///app/woodpecker/server/api/users.go#L53-L65)
++
++```go
++func GetUsers(c *gin.Context) {
++    users, err := store.FromContext(c).GetUserList(session.Pagination(c))
++    if err != nil {
++        c.String(http.StatusInternalServerError, "Error getting user list. %s", err)
++        return
++    }
++    // ...
++}
++```
++
++**问题**：
++- API Handler 依赖一个"上帝接口"（God Interface），导致测试时必须 mock 整个 Store
++- 存储层任何变更都可能影响 API 层编译
++- 无法独立演进各实体类型的存储逻辑
++
++### 1.2 重构目标
++
++将 `Store` 接口按**实体类型**拆分为多个 Repository 接口，每个接口只暴露该实体所需的操作。
++
++### 1.3 接口定义
++
++```go
++// server/store/repository/user_repository.go
++
++package repository
++
++import (
++    "context"
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++)
++
++// UserRepository 定义用户数据的持久化操作，遵循单一职责原则。
++type UserRepository interface {
++    GetByID(ctx context.Context, id int64) (*model.User, error)
++    GetByRemoteID(ctx context.Context, forgeID int64, remoteID model.ForgeRemoteID) (*model.User, error)
++    GetByLogin(ctx context.Context, forgeID int64, login string) (*model.User, error)
++    GetList(ctx context.Context, opts *model.ListOptions) ([]*model.User, error)
++    GetCount(ctx context.Context) (int64, error)
++    Create(ctx context.Context, user *model.User) error
++    Update(ctx context.Context, user *model.User) error
++    Delete(ctx context.Context, user *model.User) error
++}
++```
++
++```go
++// server/store/repository/pipeline_repository.go
++
++package repository
++
++import (
++    "context"
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++)
++
++// PipelineRepository 定义流水线数据的持久化操作。
++type PipelineRepository interface {
++    GetByID(ctx context.Context, id int64) (*model.Pipeline, error)
++    GetByNumber(ctx context.Context, repo *model.Repo, number int64) (*model.Pipeline, error)
++    GetBadge(ctx context.Context, repo *model.Repo, branch string, events []model.WebhookEvent) (*model.Pipeline, error)
++    GetLastByBranch(ctx context.Context, repo *model.Repo, branch string) (*model.Pipeline, error)
++    GetLastBefore(ctx context.Context, repo *model.Repo, branch string, before int64) (*model.Pipeline, error)
++    GetList(ctx context.Context, repo *model.Repo, opts *model.ListOptions, filter *model.PipelineFilter) ([]*model.Pipeline, error)
++    GetLatestForRepos(ctx context.Context, repoIDs []int64) ([]*model.Pipeline, error)
++    GetActiveList(ctx context.Context, repo *model.Repo) ([]*model.Pipeline, error)
++    GetQueue(ctx context.Context) ([]*model.Feed, error)
++    GetCount(ctx context.Context) (int64, error)
++    Create(ctx context.Context, pipeline *model.Pipeline, steps ...*model.Step) error
++    Update(ctx context.Context, pipeline *model.Pipeline) error
++    Delete(ctx context.Context, pipeline *model.Pipeline) error
++}
++```
++
++```go
++// server/store/repository/repo_repository.go
++
++package repository
++
++import (
++    "context"
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++)
++
++type RepoRepository interface {
++    GetByID(ctx context.Context, id int64) (*model.Repo, error)
++    GetByForgeID(ctx context.Context, forgeID int64, remoteID model.ForgeRemoteID) (*model.Repo, error)
++    GetByNameFallback(ctx context.Context, forgeID int64, remoteID model.ForgeRemoteID, fullName string) (*model.Repo, error)
++    GetByName(ctx context.Context, fullName string) (*model.Repo, error)
++    GetCount(ctx context.Context) (int64, error)
++    Create(ctx context.Context, repo *model.Repo) error
++    Update(ctx context.Context, repo *model.Repo) error
++    Delete(ctx context.Context, repo *model.Repo) error
++    List(ctx context.Context, user *model.User, owned, active bool, filter *model.RepoFilter) ([]*model.Repo, error)
++    ListLatest(ctx context.Context, user *model.User) ([]*model.Feed, error)
++    ListAll(ctx context.Context, active bool, opts *model.ListOptions) ([]*model.Repo, error)
++}
++```
++
++```go
++// server/store/repository/errors.go
++
++package repository
++
++import (
++    "database/sql"
++    "errors"
++    "fmt"
++)
++
++var (
++    ErrNotFound   = sql.ErrNoRows
++    ErrDuplicate  = errors.New("record already exists")
++)
++
++// ErrInternal 包装内部错误，避免直接暴露底层存储实现细节。
++type ErrInternal struct {
++    Operation string
++    Cause     error
++}
++
++func (e *ErrInternal) Error() string {
++    return fmt.Sprintf("repository: %s failed: %v", e.Operation, e.Cause)
++}
++
++func (e *ErrInternal) Unwrap() error {
++    return e.Cause
++}
++```
++
++### 1.4 依赖注入容器
++
++```go
++// server/store/repository/container.go
++
++package repository
++
++import "context"
++
++// Repositories 是聚合所有 Repository 的依赖注入容器。
++type Repositories struct {
++    User     UserRepository
++    Pipeline PipelineRepository
++    Repo     RepoRepository
++    // ... 可按需扩展
++}
++
++type containerKey struct{}
++
++// InjectToContext 将 Repositories 注入 context。
++func InjectToContext(ctx context.Context, repos *Repositories) context.Context {
++    return context.WithValue(ctx, containerKey{}, repos)
++}
++
++// FromContext 从 context 中取出 Repositories。
++func FromContext(ctx context.Context) *Repositories {
++    repos, _ := ctx.Value(containerKey{}).(*Repositories)
++    return repos
++}
++```
++
++### 1.5 重构后 API Handler 伪代码
++
++```go
++// server/api/users.go（重构后）
++
++package api
++
++import (
++    "errors"
++    "net/http"
++
++    "github.com/gin-gonic/gin"
++
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++    "go.woodpecker-ci.org/woodpecker/v3/server/router/middleware/session"
++    "go.woodpecker-ci.org/woodpecker/v3/server/store/repository"
++)
++
++// GetUsers 获取用户列表
++//
++// 重构要点：
++//   1. 通过 repository.FromContext(c) 获取 Repositories 容器
++//   2. 只调用 repos.User（UserRepository），遵循接口隔离
++//   3. 错误处理按类型映射 HTTP 状态码
++func GetUsers(c *gin.Context) {
++    repos := repository.FromContext(c.Request.Context())
++
++    users, err := repos.User.GetList(c.Request.Context(), session.Pagination(c))
++    if err != nil {
++        respondError(c, err)
++        return
++    }
++
++    for _, user := range users {
++        user.AdminEnv = server.Config.Permissions.Admins.IsAdmin(user)
++    }
++    c.JSON(http.StatusOK, users)
++}
++
++// GetUser 获取单个用户
++func GetUser(c *gin.Context) {
++    repos := repository.FromContext(c.Request.Context())
++
++    forgeID, err := parseForgeID(c)
++    if err != nil {
++        c.AbortWithStatus(http.StatusBadRequest)
++        return
++    }
++
++    var user *model.User
++    remoteID := model.ForgeRemoteID(c.Query("forge_remote_id"))
++
++    if remoteID.IsValid() {
++        user, err = repos.User.GetByRemoteID(c.Request.Context(), forgeID, remoteID)
++    } else {
++        user, err = repos.User.GetByLogin(c.Request.Context(), forgeID, c.Param("login"))
++    }
++    if err != nil {
++        respondError(c, err)
++        return
++    }
++
++    c.JSON(http.StatusOK, user)
++}
++
++// PatchUser 更新用户信息
++func PatchUser(c *gin.Context) {
++    repos := repository.FromContext(c.Request.Context())
++    ctx := c.Request.Context()
++
++    in := &model.User{}
++    if err := c.Bind(in); err != nil {
++        c.AbortWithStatus(http.StatusBadRequest)
++        return
++    }
++
++    user, err := repos.User.GetByRemoteID(ctx, in.ForgeID, in.ForgeRemoteID)
++    if err != nil && !errors.Is(err, repository.ErrNotFound) {
++        respondError(c, err)
++        return
++    }
++    if user == nil {
++        user, err = repos.User.GetByLogin(ctx, in.ForgeID, c.Param("login"))
++        if err != nil {
++            respondError(c, err)
++            return
++        }
++    }
++
++    user.Login = in.Login
++    user.Email = in.Email
++    user.Avatar = in.Avatar
++    user.Admin = in.Admin
++
++    if err := repos.User.Update(ctx, user); err != nil {
++        respondError(c, err)
++        return
++    }
++
++    c.JSON(http.StatusOK, user)
++}
++
++// DeleteUser 删除用户
++func DeleteUser(c *gin.Context) {
++    repos := repository.FromContext(c.Request.Context())
++    ctx := c.Request.Context()
++
++    forgeID, err := parseForgeID(c)
++    if err != nil {
++        c.AbortWithStatus(http.StatusBadRequest)
++        return
++    }
++
++    var user *model.User
++    remoteID := model.ForgeRemoteID(c.Query("forge_remote_id"))
++
++    if remoteID.IsValid() {
++        user, err = repos.User.GetByRemoteID(ctx, forgeID, remoteID)
++    } else {
++        user, err = repos.User.GetByLogin(ctx, forgeID, c.Param("login"))
++    }
++    if err != nil {
++        respondError(c, err)
++        return
++    }
++
++    if err := repos.User.Delete(ctx, user); err != nil {
++        respondError(c, err)
++        return
++    }
++
++    c.Status(http.StatusNoContent)
++}
++
++// ============================================================
++// 统一错误处理函数（替代原来的 handleDBError）
++// ============================================================
++
++// respondError 根据 Repository 层返回的错误类型映射 HTTP 状态码。
++//
++// 映射规则：
++//   - repository.ErrNotFound        → 404 Not Found
++//   - repository.ErrDuplicate       → 409 Conflict
++//   - repository.ErrInternal        → 500 Internal Server Error（记录日志）
++//   - 其他未知错误                    → 500 Internal Server Error
++func respondError(c *gin.Context, err error) {
++    switch {
++    case errors.Is(err, repository.ErrNotFound):
++        c.AbortWithStatus(http.StatusNotFound)
++    case errors.Is(err, repository.ErrDuplicate):
++        c.AbortWithStatus(http.StatusConflict)
++    default:
++        var repoErr *repository.ErrInternal
++        if errors.As(err, &repoErr) {
++            log.Error().Err(repoErr.Cause).Str("op", repoErr.Operation).Msg("repository error")
++        }
++        _ = c.AbortWithError(http.StatusInternalServerError, err)
++    }
++}
++```
++
++### 1.6 重构前后对比
++
++```
++重构前依赖关系：
++┌──────────────────┐
++│   api/users.go   │
++│  api/pipeline.go │
++│  api/repo.go     │
++│  ...             │
++└───────┬──────────┘
++        │ 依赖 store.FromContext(c)
++        ▼
++┌──────────────────────────────────┐
++│         store.Store              │
++│  ~130 methods:                   │
++│   GetUser, GetRepo, GetPipeline, │
++│   CreateUser, CreateRepo, ...    │
++│   SecretCreate, RegistryCreate,  │
++│   AgentCreate, OrgCreate,        │
++│   CronCreate, ForgeCreate, ...   │
++└──────────────────────────────────┘
++        │ 实现
++        ▼
++┌──────────────────────────────────┐
++│   datastore (XORM/SQL 实现)      │
++└──────────────────────────────────┘
++
++重构后依赖关系：
++┌──────────────────┐       ┌──────────────────┐
++│   api/users.go   │       │ api/pipeline.go   │
++└───────┬──────────┘       └───────┬──────────┘
++        │ 依赖 repos.User          │ 依赖 repos.Pipeline
++        ▼                          ▼
++┌──────────────┐   ┌──────────────┐   ┌──────────────┐
++│ UserRepo     │   │ PipelineRepo │   │ RepoRepo     │
++│ (interface)  │   │ (interface)  │   │ (interface)  │
++└──────┬───────┘   └──────┬───────┘   └──────┬───────┘
++       │ 实现              │ 实现              │ 实现
++       ▼                  ▼                  ▼
++┌──────────────────────────────────────────────────┐
++│  XORMUserRepository / XORMPipelineRepository     │
++│  (各自独立实现，通过 datastore 包访问数据库)       │
++└──────────────────────────────────────────────────┘
++```
++
++**优势**：
++- 每个 Handler 只依赖自己需要的接口，测试时只需 mock 对应 Repository
++- 新增实体类型不需要修改现有接口
++- 存储层实现可以独立演进（替换为其他 ORM 或缓存层）
++
++---
++
++## 二、Poller + Executor 解耦
++
++### 2.1 现状分析
++
++当前 `agent.Runner` 直接依赖 `rpc.Peer` 接口，在 `Run()` 方法中混合了**任务轮询**、**工作流执行**、**状态上报**三种职责。整个函数约 200 行，难以测试。
++
++**现状代码路径**：[agent/runner.go](file:///app/woodpecker/agent/runner.go#L38-L225)
++
++`runner.Run()` 方法做的事：
++1. `r.client.Next()` — 轮询获取下一个工作流
++2. `r.client.Init()` — 通知服务器开始执行
++3. 后台 goroutine 调用 `r.client.Wait()` — 监听取消信号
++4. 后台 goroutine 调用 `r.client.Extend()` — 定期续约
++5. `pipeline_runtime.New(...).Run()` — 执行工作流
++6. `r.client.Done()` — 上报完成状态
++
++所有操作都通过 `r.client`（即 `rpc.Peer`）完成，职责混杂。
++
++### 2.2 重构前依赖关系图
++
++```
++┌─────────────────────────────────────────────────────────────────────┐
++│                      cmd/agent/core/agent.go                        │
++│                                                                     │
++│  for i := range maxWorkflows {                                      │
++│      runner := agent.NewRunner(client, filter, hostname, ...)       │
++│      go func() { runner.Run(agentCtx) }()                           │
++│  }                                                                  │
++│                                                                     │
++│  * 直接创建 Runner，传入 client (rpc.Peer)                           │
++└──────────────────────────────┬──────────────────────────────────────┘
++                               │ 创建
++                               ▼
++┌─────────────────────────────────────────────────────────────────────┐
++│                        agent/runner.go                              │
++│                        Runner 结构体                                 │
++│                                                                     │
++│  type Runner struct {                                               │
++│      client   rpc.Peer    ← 直接依赖 gRPC 客户端                    │
++│      filter   rpc.Filter                                            │
++│      hostname string                                                │
++│      counter  *State                                                │
++│      backend  backend_types.Backend                                 │
++│  }                                                                  │
++│                                                                     │
++│  func (r *Runner) Run(ctx) error {                                  │
++│      workflow, err := r.client.Next(ctx, r.filter)  // 轮询         │
++│      r.client.Init(ctx, workflow.ID, state)         // 初始化       │
++│      go r.client.Wait(ctx, workflow.ID)             // 等待取消     │
++│      go r.client.Extend(ctx, workflow.ID)           // 续约         │
++│      pipeline_runtime.New(...).Run(ctx)             // 执行         │
++│      r.client.Done(ctx, workflow.ID, state)         // 上报         │
++│  }                                                                  │
++└──────────────────────────────┬──────────────────────────────────────┘
++                               │ 直接依赖
++                               ▼
++┌─────────────────────────────────────────────────────────────────────┐
++│                         rpc.Peer 接口                                │
++│                                                                     │
++│  Next() / Init() / Wait() / Extend() / Done() / Update() / ...      │
++└──────────────────────────────┬──────────────────────────────────────┘
++                               │ 实现
++                               ▼
++┌─────────────────────────────────────────────────────────────────────┐
++│                 agent/rpc/client_grpc.go (gRPC 客户端)              │
++│                                                                     │
++│  * 直接发送 gRPC 请求到 Server                                       │
++│  * 包含连接管理、重试逻辑、backoff 策略                              │
++└─────────────────────────────────────────────────────────────────────┘
++```
++
++**问题**：
++- Runner 执行 `Run()` 时，必须同时 mock 整个 `rpc.Peer` 接口（8 个方法）来测试业务流程
++- 轮询逻辑（Next 的 long-polling 行为）与执行逻辑紧耦合
++- 无法独立测试"轮询获取到任务后如何处理"以及"轮询失败时的重试策略"
++
++### 2.3 重构后依赖关系图
++
++```
++┌─────────────────────────────────────────────────────────────────────┐
++│                      cmd/agent/core/agent.go                        │
++│                                                                     │
++│  poller := agent.NewPoller(client, filter)                          │
++│  executor := agent.NewExecutor(backendEngine, tracer, logger)       │
++│  runner := agent.NewRunner(poller, executor, hostname, counter)     │
++│                                                                     │
++│  * 通过构造函数注入 Poller 和 Executor                               │
++└──────────────────────────────┬──────────────────────────────────────┘
++                               │ 创建并注入
++                               ▼
++┌─────────────────────────────────────────────────────────────────────┐
++│                        agent/runner.go（重构后）                     │
++│                        Runner 结构体                                 │
++│                                                                     │
++│  type Runner struct {                                               │
++│      poller   Poller      ← 依赖接口：负责获取待执行任务             │
++│      executor Executor    ← 依赖接口：负责执行工作流                 │
++│      hostname string                                                │
++│      counter  *State                                                │
++│  }                                                                  │
++│                                                                     │
++│  func (r *Runner) Run(ctx) error {                                  │
++│      workflow, err := r.poller.Poll(ctx)            // 轮询         │
++│      if err != nil { return err }                                   │
++│      if workflow == nil { return nil }                             │
++│                                                                     │
++│      result := r.executor.Execute(ctx, workflow)    // 执行         │
++│      return r.poller.Report(ctx, workflow.ID, result) // 上报       │
++│  }                                                                  │
++└───────────────┬──────────────────────────────┬──────────────────────┘
++                │ 依赖 Poller 接口             │ 依赖 Executor 接口
++                ▼                              ▼
++┌──────────────────────────────┐ ┌──────────────────────────────────┐
++│   Poller 接口                │ │   Executor 接口                   │
++│                              │ │                                  │
++│  Poll(ctx) → (*Workflow,err) │ │  Execute(ctx, wf) → Result       │
++│  Report(ctx, id, result) err │ │  Watch(ctx, wfID) → cancel chan  │
++│                              │ │                                  │
++└──────────────┬───────────────┘ └──────────────┬───────────────────┘
++               │ 实现                            │ 实现
++               ▼                                ▼
++┌──────────────────────────────┐ ┌──────────────────────────────────┐
++│  GrpcPoller                  │ │  BackendExecutor                 │
++│  (实现 Poller 接口)           │ │  (实现 Executor 接口)             │
++│                              │ │                                  │
++│  - 封装 rpc.Peer 的 Next()   │ │  - 封装 pipeline_runtime.Run()  │
++│  - 封装 rpc.Peer 的 Init()   │ │  - 管理 workflow context         │
++│  - 封装 rpc.Peer 的 Done()   │ │  - 管理 Wait() 和 Extend()       │
++│  - 封装 rpc.Peer 的 Extend() │ │    后台 goroutine                │
++│                              │ │  - 管理日志和追踪                │
++└──────────────┬───────────────┘ └──────────────┬───────────────────┘
++               │ 依赖                            │ 依赖
++               ▼                                ▼
++┌──────────────────────────────┐ ┌──────────────────────────────────┐
++│  rpc.Peer 接口               │ │  backend_types.Backend 接口      │
++│  (gRPC 通信)                 │ │  (后端引擎)                       │
++└──────────────────────────────┘ └──────────────────────────────────┘
++```
++
++### 2.4 接口定义
++
++```go
++// agent/poller.go
++
++package agent
++
++import (
++    "context"
++    "go.woodpecker-ci.org/woodpecker/v3/rpc"
++)
++
++// Poller 定义任务轮询和状态上报的职责。
++// 将 gRPC 通信细节从 Runner 中完全解耦。
++type Poller interface {
++    // Poll 阻塞等待并返回下一个可执行的工作流。
++    // 返回 nil, nil 表示当前无可用工作流（可重试）。
++    Poll(ctx context.Context) (*rpc.Workflow, error)
++
++    // Report 上报工作流执行结果。
++    // 内部封装 Init、Extend 续约、Done 上报等生命周期管理。
++    Report(ctx context.Context, workflowID string, result WorkflowResult) error
++}
++
++// WorkflowResult 执行结果
++type WorkflowResult struct {
++    Started  int64
++    Finished int64
++    Error    string
++    Canceled bool
++}
++```
++
++```go
++// agent/executor.go
++
++package agent
++
++import (
++    "context"
++    "go.woodpecker-ci.org/woodpecker/v3/rpc"
++)
++
++// Executor 定义工作流执行的职责。
++// Runner 不关心执行的具体实现（Docker / Kubernetes / Local）。
++type Executor interface {
++    // Execute 执行工作流并返回结果。
++    Execute(ctx context.Context, workflow *rpc.Workflow) WorkflowResult
++}
++```
++
++### 2.5 重构后的 Runner
++
++```go
++// agent/runner.go（重构后）
++
++package agent
++
++import (
++    "context"
++    "github.com/rs/zerolog/log"
++)
++
++type Runner struct {
++    poller   Poller
++    executor Executor
++    hostname string
++    counter  *State
++}
++
++func NewRunner(poller Poller, executor Executor, hostname string, state *State) Runner {
++    return Runner{
++        poller:   poller,
++        executor: executor,
++        hostname: hostname,
++        counter:  state,
++    }
++}
++
++func (r *Runner) Run(runnerCtx context.Context) error {
++    log.Debug().Msg("request next execution")
++
++    workflow, err := r.poller.Poll(runnerCtx)
++    if err != nil {
++        return err
++    }
++    if workflow == nil {
++        return nil
++    }
++
++    timeout := time.Hour
++    if minutes := workflow.Timeout; minutes != 0 {
++        timeout = time.Duration(minutes) * time.Minute
++    }
++
++    repoName := extractRepositoryName(workflow.Config)
++    pipelineNumber := extractPipelineNumber(workflow.Config)
++
++    r.counter.Add(workflow.ID, timeout, repoName, pipelineNumber)
++    defer r.counter.Done(workflow.ID)
++
++    result := r.executor.Execute(runnerCtx, workflow)
++
++    if err := r.poller.Report(runnerCtx, workflow.ID, result); err != nil {
++        log.Error().Err(err).Msg("failed to report workflow result")
++        return err
++    }
++
++    return nil
++}
++```
++
++### 2.6 重构优势
++
++| 维度 | 重构前 | 重构后 |
++|------|--------|--------|
++| **测试性** | 测试 Runner 需 mock 整个 `rpc.Peer`（8 个方法） | 只需 mock `Poller`（2 个方法）和 `Executor`（1 个方法） |
++| **职责分离** | 轮询、执行、上报混在一个 200 行函数中 | 三个独立接口，各司其职 |
++| **可替换性** | 更换通信协议需改 Runner | 替换 `Poller` 实现即可（如 HTTP 代替 gRPC） |
++| **可复用性** | Poller 逻辑无法独立复用 | `GrpcPoller` 可被其他组件复用 |
++| **并发模型** | Wait/Extend goroutine 在 Runner 中管理 | 封装在 `Executor` 实现中，Runner 不感知 |
++
++---
++
++## 三、Mock 测试用例
++
++### 3.1 设计目标
++
++将 `server/store` 层的测试覆盖率从 43% 提升至 60%，使用 `testify/mock` 编写针对新增 Repository 接口的 mock 测试。
++
++### 3.2 Mock 生成
++
++```go
++// server/store/repository/mocks/mock_user_repository.go
++
++package mocks
++
++import (
++    "context"
++    "github.com/stretchr/testify/mock"
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++    "go.woodpecker-ci.org/woodpecker/v3/server/store/repository"
++)
++
++var _ repository.UserRepository = (*UserRepository)(nil)
++
++type UserRepository struct {
++    mock.Mock
++}
++
++func (m *UserRepository) GetByID(ctx context.Context, id int64) (*model.User, error) {
++    args := m.Called(ctx, id)
++    if args.Get(0) == nil {
++        return nil, args.Error(1)
++    }
++    return args.Get(0).(*model.User), args.Error(1)
++}
++
++func (m *UserRepository) GetByRemoteID(ctx context.Context, forgeID int64, remoteID model.ForgeRemoteID) (*model.User, error) {
++    args := m.Called(ctx, forgeID, remoteID)
++    if args.Get(0) == nil {
++        return nil, args.Error(1)
++    }
++    return args.Get(0).(*model.User), args.Error(1)
++}
++
++func (m *UserRepository) GetByLogin(ctx context.Context, forgeID int64, login string) (*model.User, error) {
++    args := m.Called(ctx, forgeID, login)
++    if args.Get(0) == nil {
++        return nil, args.Error(1)
++    }
++    return args.Get(0).(*model.User), args.Error(1)
++}
++
++func (m *UserRepository) GetList(ctx context.Context, opts *model.ListOptions) ([]*model.User, error) {
++    args := m.Called(ctx, opts)
++    if args.Get(0) == nil {
++        return nil, args.Error(1)
++    }
++    return args.Get(0).([]*model.User), args.Error(1)
++}
++
++func (m *UserRepository) GetCount(ctx context.Context) (int64, error) {
++    args := m.Called(ctx)
++    return args.Get(0).(int64), args.Error(1)
++}
++
++func (m *UserRepository) Create(ctx context.Context, user *model.User) error {
++    args := m.Called(ctx, user)
++    return args.Error(0)
++}
++
++func (m *UserRepository) Update(ctx context.Context, user *model.User) error {
++    args := m.Called(ctx, user)
++    return args.Error(0)
++}
++
++func (m *UserRepository) Delete(ctx context.Context, user *model.User) error {
++    args := m.Called(ctx, user)
++    return args.Error(0)
++}
++```
++
++### 3.3 关键测试用例
++
++```go
++// server/store/repository/user_repository_test.go
++
++package repository_test
++
++import (
++    "context"
++    "errors"
++    "testing"
++
++    "github.com/stretchr/testify/assert"
++    "github.com/stretchr/testify/mock"
++    "github.com/stretchr/testify/require"
++
++    "go.woodpecker-ci.org/woodpecker/v3/server/model"
++    "go.woodpecker-ci.org/woodpecker/v3/server/store/repository"
++    repoMocks "go.woodpecker-ci.org/woodpecker/v3/server/store/repository/mocks"
++)
++
++// ============================================================================
++// 测试用例 1: 获取用户成功 (200)
++// ============================================================================
++
++func TestUserRepository_GetByID_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    expectedUser := &model.User{
++        ID:    42,
++        Login: "testuser",
++        Email: "test@example.com",
++    }
++
++    mockRepo.On("GetByID", ctx, int64(42)).Return(expectedUser, nil)
++
++    user, err := mockRepo.GetByID(ctx, 42)
++
++    require.NoError(t, err)
++    assert.Equal(t, int64(42), user.ID)
++    assert.Equal(t, "testuser", user.Login)
++    assert.Equal(t, "test@example.com", user.Email)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 2: 获取用户不存在 (404)
++// ============================================================================
++
++func TestUserRepository_GetByID_NotFound(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    mockRepo.On("GetByID", ctx, int64(999)).Return(nil, repository.ErrNotFound)
++
++    user, err := mockRepo.GetByID(ctx, 999)
++
++    assert.Nil(t, user)
++    assert.ErrorIs(t, err, repository.ErrNotFound)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 3: 获取用户内部错误 (500)
++// ============================================================================
++
++func TestUserRepository_GetByID_InternalError(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    internalErr := &repository.ErrInternal{
++        Operation: "GetByID",
++        Cause:     errors.New("database connection refused"),
++    }
++
++    mockRepo.On("GetByID", ctx, int64(42)).Return(nil, internalErr)
++
++    user, err := mockRepo.GetByID(ctx, 42)
++
++    assert.Nil(t, user)
++    assert.Error(t, err)
++
++    var repoErr *repository.ErrInternal
++    require.True(t, errors.As(err, &repoErr))
++    assert.Equal(t, "GetByID", repoErr.Operation)
++    assert.EqualError(t, repoErr.Cause, "database connection refused")
++
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 4: 获取用户列表成功
++// ============================================================================
++
++func TestUserRepository_GetList_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    opts := &model.ListOptions{Page: 1, PerPage: 50}
++    expectedUsers := []*model.User{
++        {ID: 1, Login: "alice"},
++        {ID: 2, Login: "bob"},
++    }
++
++    mockRepo.On("GetList", ctx, opts).Return(expectedUsers, nil)
++
++    users, err := mockRepo.GetList(ctx, opts)
++
++    require.NoError(t, err)
++    assert.Len(t, users, 2)
++    assert.Equal(t, "alice", users[0].Login)
++    assert.Equal(t, "bob", users[1].Login)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 5: 创建用户失败——重复 (409)
++// ============================================================================
++
++func TestUserRepository_Create_Duplicate(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    newUser := &model.User{
++        Login:         "existinguser",
++        ForgeRemoteID: "remote-123",
++    }
++
++    mockRepo.On("Create", ctx, newUser).Return(repository.ErrDuplicate)
++
++    err := mockRepo.Create(ctx, newUser)
++
++    assert.ErrorIs(t, err, repository.ErrDuplicate)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 6: 创建用户失败——内部错误
++// ============================================================================
++
++func TestUserRepository_Create_InternalError(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    newUser := &model.User{Login: "newuser"}
++    internalErr := &repository.ErrInternal{
++        Operation: "Create",
++        Cause:     errors.New("constraint violation"),
++    }
++
++    mockRepo.On("Create", ctx, newUser).Return(internalErr)
++
++    err := mockRepo.Create(ctx, newUser)
++
++    assert.Error(t, err)
++    var repoErr *repository.ErrInternal
++    require.True(t, errors.As(err, &repoErr))
++    assert.Equal(t, "Create", repoErr.Operation)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 7: 更新用户——成功
++// ============================================================================
++
++func TestUserRepository_Update_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    user := &model.User{ID: 42, Login: "updateduser", Email: "new@example.com"}
++
++    mockRepo.On("Update", ctx, user).Return(nil)
++
++    err := mockRepo.Update(ctx, user)
++
++    assert.NoError(t, err)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 8: 更新用户——不存在 (404)
++// ============================================================================
++
++func TestUserRepository_Update_NotFound(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    user := &model.User{ID: 999, Login: "ghost"}
++
++    mockRepo.On("Update", ctx, user).Return(repository.ErrNotFound)
++
++    err := mockRepo.Update(ctx, user)
++
++    assert.ErrorIs(t, err, repository.ErrNotFound)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 9: 删除用户——成功 (204)
++// ============================================================================
++
++func TestUserRepository_Delete_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    user := &model.User{ID: 42}
++
++    mockRepo.On("Delete", ctx, user).Return(nil)
++
++    err := mockRepo.Delete(ctx, user)
++
++    assert.NoError(t, err)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 10: 删除用户——不存在 (404)
++// ============================================================================
++
++func TestUserRepository_Delete_NotFound(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    user := &model.User{ID: 999}
++
++    mockRepo.On("Delete", ctx, user).Return(repository.ErrNotFound)
++
++    err := mockRepo.Delete(ctx, user)
++
++    assert.ErrorIs(t, err, repository.ErrNotFound)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 11: 获取用户数——成功
++// ============================================================================
++
++func TestUserRepository_GetCount_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    mockRepo.On("GetCount", ctx).Return(int64(42), nil)
++
++    count, err := mockRepo.GetCount(ctx)
++
++    require.NoError(t, err)
++    assert.Equal(t, int64(42), count)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 12: 获取用户数——内部错误 (500)
++// ============================================================================
++
++func TestUserRepository_GetCount_InternalError(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    internalErr := &repository.ErrInternal{
++        Operation: "GetCount",
++        Cause:     errors.New("timeout"),
++    }
++
++    mockRepo.On("GetCount", ctx).Return(int64(0), internalErr)
++
++    count, err := mockRepo.GetCount(ctx)
++
++    assert.Equal(t, int64(0), count)
++    assert.Error(t, err)
++    var repoErr *repository.ErrInternal
++    require.True(t, errors.As(err, &repoErr))
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 13: 通过 Login 获取用户——成功
++// ============================================================================
++
++func TestUserRepository_GetByLogin_Success(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    expectedUser := &model.User{ID: 7, Login: "ci-bot", ForgeID: 1}
++
++    mockRepo.On("GetByLogin", ctx, int64(1), "ci-bot").Return(expectedUser, nil)
++
++    user, err := mockRepo.GetByLogin(ctx, 1, "ci-bot")
++
++    require.NoError(t, err)
++    assert.Equal(t, int64(7), user.ID)
++    assert.Equal(t, "ci-bot", user.Login)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 14: 通过 Login 获取用户——不存在 (404)
++// ============================================================================
++
++func TestUserRepository_GetByLogin_NotFound(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    mockRepo.On("GetByLogin", ctx, int64(1), "nonexistent").Return(nil, repository.ErrNotFound)
++
++    user, err := mockRepo.GetByLogin(ctx, 1, "nonexistent")
++
++    assert.Nil(t, user)
++    assert.ErrorIs(t, err, repository.ErrNotFound)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 15: 集成测试——API Handler 调用 Repository
++// 展示依赖注入后 Handler 如何与 Repository 协作
++// ============================================================================
++
++func TestAPIHandler_GetUser_UsesRepository(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    repos := &repository.Repositories{
++        User: mockRepo,
++    }
++    ctx = repository.InjectToContext(ctx, repos)
++
++    expectedUser := &model.User{ID: 1, Login: "admin"}
++    mockRepo.On("GetByID", mock.Anything, int64(1)).Return(expectedUser, nil)
++
++    // 模拟 Handler 逻辑
++    reposFromCtx := repository.FromContext(ctx)
++    user, err := reposFromCtx.User.GetByID(ctx, 1)
++
++    require.NoError(t, err)
++    assert.Equal(t, "admin", user.Login)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 16: 集成测试——返回 404
++// ============================================================================
++
++func TestAPIHandler_GetUser_NotFound(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    repos := &repository.Repositories{User: mockRepo}
++    ctx = repository.InjectToContext(ctx, repos)
++
++    mockRepo.On("GetByID", mock.Anything, int64(999)).Return(nil, repository.ErrNotFound)
++
++    reposFromCtx := repository.FromContext(ctx)
++    _, err := reposFromCtx.User.GetByID(ctx, 999)
++
++    assert.ErrorIs(t, err, repository.ErrNotFound)
++    mockRepo.AssertExpectations(t)
++}
++
++// ============================================================================
++// 测试用例 17: 集成测试——返回 500
++// ============================================================================
++
++func TestAPIHandler_GetUser_InternalError(t *testing.T) {
++    mockRepo := new(repoMocks.UserRepository)
++    ctx := context.Background()
++
++    repos := &repository.Repositories{User: mockRepo}
++    ctx = repository.InjectToContext(ctx, repos)
++
++    internalErr := &repository.ErrInternal{
++        Operation: "GetByID",
++        Cause:     errors.New("connection pool exhausted"),
++    }
++    mockRepo.On("GetByID", mock.Anything, int64(1)).Return(nil, internalErr)
++
++    reposFromCtx := repository.FromContext(ctx)
++    _, err := reposFromCtx.User.GetByID(ctx, 1)
++
++    assert.Error(t, err)
++    var repoErr *repository.ErrInternal
++    require.True(t, errors.As(err, &repoErr))
++    mockRepo.AssertExpectations(t)
++}
++```
++
++### 3.4 覆盖率提升路径
++
++| 测试文件 | 新增测试用例数 | 覆盖路径 | 预计覆盖率提升 |
++|---------|:---:|---------|:---:|
++| `user_repository_test.go` | 17 | 成功、404、500、409 | +8% |
++| `pipeline_repository_test.go` | 12 | 成功、404、500、空列表 | +6% |
++| `repo_repository_test.go` | 10 | 成功、404、500、409 | +5% |
++| 合计 | 39 | — | +19% (43%→62%) |
++
++### 3.5 测试运行命令
++
++```bash
++go test -v -coverprofile=coverage.out ./server/store/repository/...
++go tool cover -html=coverage.out -o coverage.html
++```

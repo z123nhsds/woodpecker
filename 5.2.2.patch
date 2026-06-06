@@ -1,9 +1,171 @@
 diff --git a/5.2.2.patch b/5.2.2.patch
-new file mode 100644
-index 000000000..33b060afd
---- /dev/null
+index abfc68522..e69de29bb 100644
+--- a/5.2.2.patch
 +++ b/5.2.2.patch
-@@ -0,0 +1,3 @@
-+diff --git a/5.2.2.patch b/5.2.2.patch
-+new file mode 100644
-+index 000000000..e69de29bb
+@@ -1,9 +0,0 @@
+-diff --git a/5.2.2.patch b/5.2.2.patch
+-new file mode 100644
+-index 000000000..33b060afd
+---- /dev/null
+-+++ b/5.2.2.patch
+-@@ -0,0 +1,3 @@
+-+diff --git a/5.2.2.patch b/5.2.2.patch
+-+new file mode 100644
+-+index 000000000..e69de29bb
+diff --git a/server/forge/github/github_test.go b/server/forge/github/github_test.go
+index 955279384..ea57fa986 100644
+--- a/server/forge/github/github_test.go
++++ b/server/forge/github/github_test.go
+@@ -17,8 +17,10 @@ package github
+ 
+ import (
+ 	"context"
++	"net/http"
+ 	"net/http/httptest"
+ 	"strings"
++	"sync/atomic"
+ 	"testing"
+ 
+ 	"github.com/gin-gonic/gin"
+@@ -120,7 +122,6 @@ var (
+ )
+ 
+ func TestHook(t *testing.T) {
+-	// Mock GitHub API for changed files
+ 	mockedHTTPClient := github_mock.NewMockedHTTPClient(
+ 		github_mock.WithRequestMatch(
+ 			github_mock.GetReposCommitsByOwnerByRepoByRef,
+@@ -148,14 +149,11 @@ func TestHook(t *testing.T) {
+ 		),
+ 	)
+ 
+-	// Create a GitHub client with the mocked HTTP client
+ 	gh, err := github.NewClient(github.WithHTTPClient(mockedHTTPClient))
+ 	require.NoError(t, err)
+ 
+-	// Use the custom type as the key
+ 	ctx := context.WithValue(context.Background(), githubClientKey, gh)
+ 
+-	// Create a mock store using the proper mocking pattern
+ 	mockStore := store_mocks.NewMockStore(t)
+ 	mockStore.On("GetUser", mock.Anything).Return(&model.User{
+ 		ID:          1,
+@@ -170,22 +168,18 @@ func TestHook(t *testing.T) {
+ 		UserID:        1,
+ 	}, nil)
+ 
+-	// Set up context with mock store
+ 	ctx = store.InjectToContext(ctx, mockStore)
+ 
+-	// Create a mock client
+ 	c := &client{
+ 		API: defaultAPI,
+ 		url: defaultURL,
+ 	}
+ 
+ 	t.Run("convert push from webhook", func(t *testing.T) {
+-		// Create a mock HTTP request with a push event payload
+ 		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookPush))
+ 		req.Header.Set("Content-Type", "application/json")
+ 		req.Header.Set("X-GitHub-Event", "push")
+ 
+-		// Call the Hook function
+ 		repo, pipeline, err := c.Hook(ctx, req)
+ 
+ 		assert.NoError(t, err)
+@@ -203,13 +197,67 @@ func TestHook(t *testing.T) {
+ 		assert.Equal(t, []string{"main.go"}, pipeline.ChangedFiles)
+ 	})
+ 
++	t.Run("convert forced push from webhook", func(t *testing.T) {
++		var compareCalled atomic.Bool
++
++		apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++			switch {
++			case strings.Contains(r.URL.Path, "/compare/"):
++				compareCalled.Store(true)
++				http.NotFound(w, r)
++			case r.URL.Path == "/repos/6543/hello-world/commits/f7220f1f753260bf6f1c533357c70213e9fd4abe":
++				w.Header().Set("Content-Type", "application/json")
++				_, err := w.Write([]byte(`{"files":[{"filename":"README.md"},{"filename":"main.go"}]}`))
++				require.NoError(t, err)
++			default:
++				http.NotFound(w, r)
++			}
++		}))
++		defer apiServer.Close()
++
++		forcedGH, err := github.NewClient(
++			github.WithURLs(github.Ptr(apiServer.URL+"/"), nil),
++			github.WithHTTPClient(apiServer.Client()),
++		)
++		require.NoError(t, err)
++
++		forcedCtx := context.WithValue(context.Background(), githubClientKey, forcedGH)
++		forcedStore := store_mocks.NewMockStore(t)
++		forcedStore.On("GetUser", mock.Anything).Return(&model.User{
++			ID:          1,
++			Login:       "6543",
++			AccessToken: "token",
++		}, nil)
++		forcedStore.On("GetRepoNameFallback", mock.Anything, mock.Anything, mock.Anything).Return(&model.Repo{
++			ID:            1,
++			ForgeRemoteID: "1",
++			Owner:         "6543",
++			Name:          "hello-world",
++			UserID:        1,
++		}, nil)
++		forcedCtx = store.InjectToContext(forcedCtx, forcedStore)
++
++		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookPushForced))
++		req.Header.Set("Content-Type", "application/json")
++		req.Header.Set("X-GitHub-Event", "push")
++
++		repo, pipeline, err := c.Hook(forcedCtx, req)
++
++		assert.NoError(t, err)
++		require.NotNil(t, repo)
++		require.NotNil(t, pipeline)
++		assert.Equal(t, model.EventPush, pipeline.Event)
++		assert.Equal(t, "refs/heads/main", pipeline.Ref)
++		assert.Equal(t, "f7220f1f753260bf6f1c533357c70213e9fd4abe", pipeline.Commit)
++		assert.ElementsMatch(t, []string{"README.md", "main.go"}, pipeline.ChangedFiles)
++		assert.False(t, compareCalled.Load())
++	})
++
+ 	t.Run("convert pull request from webhook", func(t *testing.T) {
+-		// Create a mock HTTP request with a pull request event payload
+ 		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookPullRequest))
+ 		req.Header.Set("Content-Type", "application/json")
+ 		req.Header.Set("X-GitHub-Event", "pull_request")
+ 
+-		// Call the Hook function
+ 		repo, pipeline, err := c.Hook(ctx, req)
+ 
+ 		assert.NoError(t, err)
+@@ -229,12 +277,10 @@ func TestHook(t *testing.T) {
+ 	})
+ 
+ 	t.Run("convert deployment from webhook", func(t *testing.T) {
+-		// Create a mock HTTP request with a deployment event payload
+ 		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookDeploy))
+ 		req.Header.Set("Content-Type", "application/json")
+ 		req.Header.Set("X-GitHub-Event", "deployment")
+ 
+-		// Call the Hook function
+ 		repo, pipeline, err := c.Hook(ctx, req)
+ 
+ 		assert.NoError(t, err)
+@@ -251,12 +297,10 @@ func TestHook(t *testing.T) {
+ 	})
+ 
+ 	t.Run("convert tag from webhook", func(t *testing.T) {
+-		// Create a mock HTTP request with a tag event payload but push event header (tags create push events at github)
+ 		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookTag))
+ 		req.Header.Set("Content-Type", "application/json")
+ 		req.Header.Set("X-GitHub-Event", "push")
+ 
+-		// Call the Hook function
+ 		repo, pipeline, err := c.Hook(ctx, req)
+ 
+ 		assert.NoError(t, err)

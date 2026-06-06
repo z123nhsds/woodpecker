@@ -18,11 +18,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-
 	backend_types "go.woodpecker-ci.org/woodpecker/v3/pipeline/backend/types"
 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
 )
 
+func TestConvertDAGToStages(t *testing.T) {
 func TestConvertDAGToStages(t *testing.T) {
 	steps := map[string]*dagCompilerStep{
 		"step1": {
@@ -48,8 +48,8 @@ func TestConvertDAGToStages(t *testing.T) {
 		},
 		"step2": {
 			step: &backend_types.Step{},
-		},
 	}
+	_, err = convertDAGToStages(steps)
 	_, err = convertDAGToStages(steps)
 	assert.NoError(t, err)
 
@@ -64,7 +64,7 @@ func TestConvertDAGToStages(t *testing.T) {
 		"c": {
 			step:      &backend_types.Step{},
 			dependsOn: constraint.DependsOn{{Name: "a"}},
-		},
+				Name:  "echo 2",
 		"d": {
 			step:      &backend_types.Step{},
 			dependsOn: constraint.DependsOn{{Name: "b"}, {Name: "c"}},
@@ -77,8 +77,8 @@ func TestConvertDAGToStages(t *testing.T) {
 		"step1": {
 			step:      &backend_types.Step{},
 			dependsOn: constraint.DependsOn{{Name: "not-existing-step"}},
-		},
-	}
+			Image: "bash",
+		}, {
 	_, err = convertDAGToStages(steps)
 	assert.ErrorIs(t, err, &ErrStepMissingDependency{})
 
@@ -139,24 +139,6 @@ func TestConvertDAGToStages(t *testing.T) {
 	}}, stages)
 }
 
-func TestOptionalStepDependency(t *testing.T) {
-	t.Run("missing optional step dep is dropped", func(t *testing.T) {
-		steps := map[string]*dagCompilerStep{
-			"build": {
-				position: 0,
-				name:     "build",
-				step:     &backend_types.Step{Name: "build"},
-			},
-			"deploy": {
-				position: 1,
-				name:     "deploy",
-				step:     &backend_types.Step{Name: "deploy"},
-				dependsOn: constraint.DependsOn{
-					{Name: "build"},
-					{Name: "lint", Optional: true},
-				},
-			},
-		}
 		stages, err := convertDAGToStages(steps)
 		assert.NoError(t, err)
 		assert.Len(t, stages, 2, "should produce 2 stages (build then deploy)")

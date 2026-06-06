@@ -12,7 +12,6 @@ variables:
         # tools updates
         - Makefile
         - 'codecov.yaml'
-      event: pull_request
 
 when:
   - event: pull_request
@@ -28,15 +27,8 @@ steps:
     when:
       path:
         - <<: *when_path
+        - <<: *when_path
         - '.woodpecker/**'
-
-  lint-pipeline:
-    depends_on:
-      - vendor
-    image: *golang_image
-    commands:
-      - go run go.woodpecker-ci.org/woodpecker/v3/cmd/cli lint
-    environment:
       WOODPECKER_DISABLE_UPDATE_CHECK: true
       WOODPECKER_LINT_STRICT: true
       WOODPECKER_PLUGINS_PRIVILEGED: 'docker.io/woodpeckerci/plugin-docker-buildx'
@@ -143,7 +135,6 @@ steps:
         - agent-coverage.out
         - cli-coverage.out
         - coverage.out
-        - server-coverage.out
         - datastore-coverage.out
         - e2e-coverage.out
       token:

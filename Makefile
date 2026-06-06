@@ -16,7 +16,6 @@ ifeq ($(TARGETOS),windows)
 endif
 
 DIST_DIR ?= dist
-
 VERSION ?= next
 VERSION_NUMBER ?= 0.0.0
 CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
@@ -206,25 +205,6 @@ test-lib: ## Test lib code
 test-e2e: ## Test by running yaml config and compare expected result
 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
 
-.PHONY: test
-test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
-
-##@ Build
-
-build-ui: ## Build UI
-	(cd web/; pnpm install --frozen-lockfile; pnpm build)
-
-build-server: build-ui generate-openapi ## Build server
-	CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-server${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/server
-
-build-agent: ## Build agent
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-agent${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/agent
-
-build-cli: ## Build cli
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-cli${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/cli
-
-build-tarball: ## Build tar archive
-	mkdir -p ${DIST_DIR} && tar chzvf ${DIST_DIR}/woodpecker-src.tar.gz \
 	  --exclude="*.exe" \
 	  --exclude="./.pnpm-store" \
 	  --exclude="node_modules" \

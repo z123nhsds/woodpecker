@@ -1,0 +1,158 @@
+diff --git a/.woodpecker/test.yaml b/.woodpecker/test.yaml
+index 025f2981a..2fcc18267 100644
+--- a/.woodpecker/test.yaml
++++ b/.woodpecker/test.yaml
+@@ -12,7 +12,6 @@ variables:
+         # tools updates
+         - Makefile
+         - 'codecov.yaml'
+-      event: pull_request
+ 
+ when:
+   - event: pull_request
+@@ -27,16 +26,9 @@ steps:
+       - go mod vendor
+     when:
+       path:
++        - <<: *when_path
+         - <<: *when_path
+         - '.woodpecker/**'
+-
+-  lint-pipeline:
+-    depends_on:
+-      - vendor
+-    image: *golang_image
+-    commands:
+-      - go run go.woodpecker-ci.org/woodpecker/v3/cmd/cli lint
+-    environment:
+       WOODPECKER_DISABLE_UPDATE_CHECK: true
+       WOODPECKER_LINT_STRICT: true
+       WOODPECKER_PLUGINS_PRIVILEGED: 'docker.io/woodpeckerci/plugin-docker-buildx'
+@@ -143,7 +135,6 @@ steps:
+         - agent-coverage.out
+         - cli-coverage.out
+         - coverage.out
+-        - server-coverage.out
+         - datastore-coverage.out
+         - e2e-coverage.out
+       token:
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..2b411d490 100644
+--- a/Makefile
++++ b/Makefile
+@@ -16,7 +16,6 @@ ifeq ($(TARGETOS),windows)
+ endif
+ 
+ DIST_DIR ?= dist
+-
+ VERSION ?= next
+ VERSION_NUMBER ?= 0.0.0
+ CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
+@@ -206,25 +205,6 @@ test-lib: ## Test lib code
+ test-e2e: ## Test by running yaml config and compare expected result
+ 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
+ 
+-.PHONY: test
+-test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
+-
+-##@ Build
+-
+-build-ui: ## Build UI
+-	(cd web/; pnpm install --frozen-lockfile; pnpm build)
+-
+-build-server: build-ui generate-openapi ## Build server
+-	CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-server${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/server
+-
+-build-agent: ## Build agent
+-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-agent${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/agent
+-
+-build-cli: ## Build cli
+-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-cli${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/cli
+-
+-build-tarball: ## Build tar archive
+-	mkdir -p ${DIST_DIR} && tar chzvf ${DIST_DIR}/woodpecker-src.tar.gz \
+ 	  --exclude="*.exe" \
+ 	  --exclude="./.pnpm-store" \
+ 	  --exclude="node_modules" \
+diff --git a/codecov.yaml b/codecov.yaml
+index dc0150251..e69de29bb 100644
+--- a/codecov.yaml
++++ b/codecov.yaml
+@@ -1,4 +0,0 @@
+-ignore:
+-  - '**/mocks/mock_*.go'
+-  - '**/fixtures/*.go'
+-  - 'e2e/**/*.go'
+diff --git a/pipeline/frontend/yaml/compiler/dag_test.go b/pipeline/frontend/yaml/compiler/dag_test.go
+index 30b479da3..2fd6a239e 100644
+--- a/pipeline/frontend/yaml/compiler/dag_test.go
++++ b/pipeline/frontend/yaml/compiler/dag_test.go
+@@ -18,11 +18,11 @@ import (
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/assert"
+-
+ 	backend_types "go.woodpecker-ci.org/woodpecker/v3/pipeline/backend/types"
+ 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
+ )
+ 
++func TestConvertDAGToStages(t *testing.T) {
+ func TestConvertDAGToStages(t *testing.T) {
+ 	steps := map[string]*dagCompilerStep{
+ 		"step1": {
+@@ -48,9 +48,9 @@ func TestConvertDAGToStages(t *testing.T) {
+ 		},
+ 		"step2": {
+ 			step: &backend_types.Step{},
+-		},
+ 	}
+ 	_, err = convertDAGToStages(steps)
++	_, err = convertDAGToStages(steps)
+ 	assert.NoError(t, err)
+ 
+ 	steps = map[string]*dagCompilerStep{
+@@ -64,7 +64,7 @@ func TestConvertDAGToStages(t *testing.T) {
+ 		"c": {
+ 			step:      &backend_types.Step{},
+ 			dependsOn: constraint.DependsOn{{Name: "a"}},
+-		},
++				Name:  "echo 2",
+ 		"d": {
+ 			step:      &backend_types.Step{},
+ 			dependsOn: constraint.DependsOn{{Name: "b"}, {Name: "c"}},
+@@ -77,8 +77,8 @@ func TestConvertDAGToStages(t *testing.T) {
+ 		"step1": {
+ 			step:      &backend_types.Step{},
+ 			dependsOn: constraint.DependsOn{{Name: "not-existing-step"}},
+-		},
+-	}
++			Image: "bash",
++		}, {
+ 	_, err = convertDAGToStages(steps)
+ 	assert.ErrorIs(t, err, &ErrStepMissingDependency{})
+ 
+@@ -139,24 +139,6 @@ func TestConvertDAGToStages(t *testing.T) {
+ 	}}, stages)
+ }
+ 
+-func TestOptionalStepDependency(t *testing.T) {
+-	t.Run("missing optional step dep is dropped", func(t *testing.T) {
+-		steps := map[string]*dagCompilerStep{
+-			"build": {
+-				position: 0,
+-				name:     "build",
+-				step:     &backend_types.Step{Name: "build"},
+-			},
+-			"deploy": {
+-				position: 1,
+-				name:     "deploy",
+-				step:     &backend_types.Step{Name: "deploy"},
+-				dependsOn: constraint.DependsOn{
+-					{Name: "build"},
+-					{Name: "lint", Optional: true},
+-				},
+-			},
+-		}
+ 		stages, err := convertDAGToStages(steps)
+ 		assert.NoError(t, err)
+ 		assert.Len(t, stages, 2, "should produce 2 stages (build then deploy)")

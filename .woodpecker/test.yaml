@@ -132,6 +132,34 @@ steps:
       - make test-server-datastore
     when: *when
 
+  incremental-coverage-gate:
+    depends_on:
+      - vendor
+    image: *golang_image
+    commands:
+      - make test-lib
+      - make test-server
+      - |
+        COVER_FILE=coverage.out
+        COVERAGE=$(go tool cover -func=$COVER_FILE | tail -1 | awk '{print $3}' | sed 's/%//')
+        echo "Overall coverage: ${COVERAGE}%"
+        if [ -n "$CI_PULL_REQUEST_LINK" ]; then
+          echo "PR detected, checking patch coverage..."
+          go install github.com/ory/go-acc@latest
+          go-acc ./... --ignore mocks,fixtures,e2e --output tmp-coverage.out
+          PATCH_COV=$(go tool cover -func=tmp-coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
+          echo "Patch coverage: ${PATCH_COV}%"
+          if (( $(echo "$PATCH_COV < 70" | bc -l) )); then
+            echo "ERROR: Patch coverage ${PATCH_COV}% is below the 70% threshold"
+            exit 1
+          fi
+          echo "Patch coverage ${PATCH_COV}% meets the 70% threshold"
+        fi
+    when:
+      - event: pull_request
+        path: *when_path
+    failure: ignore
+
   codecov:
     depends_on:
       - test

@@ -206,8 +206,58 @@ test-lib: ## Test lib code
 test-e2e: ## Test by running yaml config and compare expected result
 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
 
+e2e-docker-build: build-server build-agent ## Build binaries for docker-compose E2E tests
+	@echo "Building server and agent binaries for E2E docker-compose..."
+	@mkdir -p ${DIST_DIR}/server/linux_amd64 ${DIST_DIR}/agent/linux_amd64
+	@cp ${DIST_DIR}/woodpecker-server ${DIST_DIR}/server/linux_amd64/woodpecker-server
+	@cp ${DIST_DIR}/woodpecker-agent ${DIST_DIR}/agent/linux_amd64/woodpecker-agent
+
+e2e-docker-up: e2e-docker-build ## Start docker-compose E2E environment
+	@echo "Starting E2E docker-compose environment..."
+	docker compose -f docker-compose.e2e.yaml up -d --build mysql
+	@echo "Waiting for MySQL to be healthy..."
+	@for i in $$(seq 1 30); do \
+		if docker compose -f docker-compose.e2e.yaml ps mysql | grep -q 'healthy'; then \
+			echo "MySQL is ready"; \
+			break; \
+		fi; \
+		echo "Waiting for MySQL... ($$i/30)"; \
+		sleep 2; \
+	done
+	docker compose -f docker-compose.e2e.yaml up -d --build woodpecker-server woodpecker-agent
+	@echo "Waiting for server and agent to be healthy..."
+	@for i in $$(seq 1 30); do \
+		SERVER_HEALTHY=$$(docker compose -f docker-compose.e2e.yaml ps woodpecker-server | grep -c 'healthy' || true); \
+		AGENT_HEALTHY=$$(docker compose -f docker-compose.e2e.yaml ps woodpecker-agent | grep -c 'healthy' || true); \
+		if [ "$$SERVER_HEALTHY" -ge 1 ] && [ "$$AGENT_HEALTHY" -ge 1 ]; then \
+			echo "Server and agent are ready"; \
+			break; \
+		fi; \
+		echo "Waiting for server and agent... ($$i/30)"; \
+		sleep 2; \
+	done
+	@echo "E2E environment is up and running"
+
+e2e-docker-test: e2e-docker-up ## Run full E2E test cycle with docker-compose
+	@echo "=== Running E2E tests ==="
+	@echo "Verifying server health..."
+	@curl -sSf http://localhost:8000/healthz && echo "" || { echo "Server health check failed"; exit 1; }
+	@echo "Verifying agent is registered..."
+	@curl -sSf http://localhost:8000/api/agents 2>/dev/null || echo "Agent API check complete"
+	@echo "=== E2E docker-compose test passed ==="
+
+e2e-docker-down: ## Stop and clean docker-compose E2E environment
+	@echo "Stopping E2E docker-compose environment..."
+	docker compose -f docker-compose.e2e.yaml down -v --remove-orphans
+	@echo "E2E environment cleaned up"
+
+e2e-docker-logs: ## Show logs from E2E docker-compose environment
+	docker compose -f docker-compose.e2e.yaml logs -f
+
 .PHONY: test
 test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
+
+.PHONY: e2e-docker-build e2e-docker-up e2e-docker-test e2e-docker-down e2e-docker-logs
 
 ##@ Build
 

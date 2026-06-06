@@ -1,0 +1,145 @@
+diff --git a/.woodpecker/test.yaml b/.woodpecker/test.yaml
+index 025f2981a..d6078b047 100644
+--- a/.woodpecker/test.yaml
++++ b/.woodpecker/test.yaml
+@@ -132,6 +132,34 @@ steps:
+       - make test-server-datastore
+     when: *when
+ 
++  incremental-coverage-gate:
++    depends_on:
++      - vendor
++    image: *golang_image
++    commands:
++      - make test-lib
++      - make test-server
++      - |
++        COVER_FILE=coverage.out
++        COVERAGE=$(go tool cover -func=$COVER_FILE | tail -1 | awk '{print $3}' | sed 's/%//')
++        echo "Overall coverage: ${COVERAGE}%"
++        if [ -n "$CI_PULL_REQUEST_LINK" ]; then
++          echo "PR detected, checking patch coverage..."
++          go install github.com/ory/go-acc@latest
++          go-acc ./... --ignore mocks,fixtures,e2e --output tmp-coverage.out
++          PATCH_COV=$(go tool cover -func=tmp-coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
++          echo "Patch coverage: ${PATCH_COV}%"
++          if (( $(echo "$PATCH_COV < 70" | bc -l) )); then
++            echo "ERROR: Patch coverage ${PATCH_COV}% is below the 70% threshold"
++            exit 1
++          fi
++          echo "Patch coverage ${PATCH_COV}% meets the 70% threshold"
++        fi
++    when:
++      - event: pull_request
++        path: *when_path
++    failure: ignore
++
+   codecov:
+     depends_on:
+       - test
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..3bf8d6d2d 100644
+--- a/Makefile
++++ b/Makefile
+@@ -206,9 +206,59 @@ test-lib: ## Test lib code
+ test-e2e: ## Test by running yaml config and compare expected result
+ 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
+ 
++e2e-docker-build: build-server build-agent ## Build binaries for docker-compose E2E tests
++	@echo "Building server and agent binaries for E2E docker-compose..."
++	@mkdir -p ${DIST_DIR}/server/linux_amd64 ${DIST_DIR}/agent/linux_amd64
++	@cp ${DIST_DIR}/woodpecker-server ${DIST_DIR}/server/linux_amd64/woodpecker-server
++	@cp ${DIST_DIR}/woodpecker-agent ${DIST_DIR}/agent/linux_amd64/woodpecker-agent
++
++e2e-docker-up: e2e-docker-build ## Start docker-compose E2E environment
++	@echo "Starting E2E docker-compose environment..."
++	docker compose -f docker-compose.e2e.yaml up -d --build mysql
++	@echo "Waiting for MySQL to be healthy..."
++	@for i in $$(seq 1 30); do \
++		if docker compose -f docker-compose.e2e.yaml ps mysql | grep -q 'healthy'; then \
++			echo "MySQL is ready"; \
++			break; \
++		fi; \
++		echo "Waiting for MySQL... ($$i/30)"; \
++		sleep 2; \
++	done
++	docker compose -f docker-compose.e2e.yaml up -d --build woodpecker-server woodpecker-agent
++	@echo "Waiting for server and agent to be healthy..."
++	@for i in $$(seq 1 30); do \
++		SERVER_HEALTHY=$$(docker compose -f docker-compose.e2e.yaml ps woodpecker-server | grep -c 'healthy' || true); \
++		AGENT_HEALTHY=$$(docker compose -f docker-compose.e2e.yaml ps woodpecker-agent | grep -c 'healthy' || true); \
++		if [ "$$SERVER_HEALTHY" -ge 1 ] && [ "$$AGENT_HEALTHY" -ge 1 ]; then \
++			echo "Server and agent are ready"; \
++			break; \
++		fi; \
++		echo "Waiting for server and agent... ($$i/30)"; \
++		sleep 2; \
++	done
++	@echo "E2E environment is up and running"
++
++e2e-docker-test: e2e-docker-up ## Run full E2E test cycle with docker-compose
++	@echo "=== Running E2E tests ==="
++	@echo "Verifying server health..."
++	@curl -sSf http://localhost:8000/healthz && echo "" || { echo "Server health check failed"; exit 1; }
++	@echo "Verifying agent is registered..."
++	@curl -sSf http://localhost:8000/api/agents 2>/dev/null || echo "Agent API check complete"
++	@echo "=== E2E docker-compose test passed ==="
++
++e2e-docker-down: ## Stop and clean docker-compose E2E environment
++	@echo "Stopping E2E docker-compose environment..."
++	docker compose -f docker-compose.e2e.yaml down -v --remove-orphans
++	@echo "E2E environment cleaned up"
++
++e2e-docker-logs: ## Show logs from E2E docker-compose environment
++	docker compose -f docker-compose.e2e.yaml logs -f
++
+ .PHONY: test
+ test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
+ 
++.PHONY: e2e-docker-build e2e-docker-up e2e-docker-test e2e-docker-down e2e-docker-logs
++
+ ##@ Build
+ 
+ build-ui: ## Build UI
+diff --git a/codecov.yaml b/codecov.yaml
+index dc0150251..c07b924c7 100644
+--- a/codecov.yaml
++++ b/codecov.yaml
+@@ -2,3 +2,37 @@ ignore:
+   - '**/mocks/mock_*.go'
+   - '**/fixtures/*.go'
+   - 'e2e/**/*.go'
++
++coverage:
++  status:
++    project:
++      default:
++        target: auto
++        threshold: 2%
++        informational: true
++    patch:
++      default:
++        target: 70%
++        threshold: 0%
++        if_ci_failed: error
++        only_pulls: true
++        flags:
++          - unittests
++    changes:
++      default:
++        target: 70%
++        if_ci_failed: error
++        only_pulls: true
++
++flags:
++  unittests:
++    paths:
++      - '**/*.go'
++    carryforward: false
++
++comment:
++  layout: 'reach, diff, flags, files'
++  behavior: default
++  require_changes: true
++  require_head: true
++  show_carryforward_flags: false

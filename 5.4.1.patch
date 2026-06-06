@@ -1,0 +1,71 @@
+diff --git a/pipeline/frontend/yaml/matrix/matrix.go b/pipeline/frontend/yaml/matrix/matrix.go
+index 09cf43e13..9ae15f9e1 100644
+--- a/pipeline/frontend/yaml/matrix/matrix.go
++++ b/pipeline/frontend/yaml/matrix/matrix.go
+@@ -59,7 +59,7 @@ func Parse(data []byte) ([]Axis, error) {
+ 		return []Axis{}, nil
+ 	}
+ 
+-	return calc(matrix), nil
++	return calcMatrix(matrix)
+ }
+ 
+ // ParseString parses the Yaml string matrix definition.
+@@ -67,7 +67,11 @@ func ParseString(data string) ([]Axis, error) {
+ 	return Parse([]byte(data))
+ }
+ 
+-func calc(matrix Matrix) []Axis {
++func calcMatrix(matrix Matrix) ([]Axis, error) {
++	if len(matrix) == 0 {
++		return []Axis{}, nil
++	}
++
+ 	// calculate number of permutations and extract the list of tags
+ 	// (ie go_version, redis_version, etc)
+ 	var perm int
+@@ -80,6 +84,10 @@ func calc(matrix Matrix) []Axis {
+ 		tags = append(tags, k)
+ 	}
+ 
++	if perm == 0 {
++		return []Axis{}, nil
++	}
++
+ 	// structure to hold the transformed result set
+ 	var axisList []Axis
+ 
+@@ -108,7 +116,12 @@ func calc(matrix Matrix) []Axis {
+ 		}
+ 	}
+ 
+-	return axisList
++	return axisList, nil
++}
++
++// Calc calculates matrix permutations.
++func Calc(matrix Matrix) ([]Axis, error) {
++	return calcMatrix(matrix)
+ }
+ 
+ func parse(raw []byte) (Matrix, error) {
+diff --git a/pipeline/frontend/yaml/types/workflow.go b/pipeline/frontend/yaml/types/workflow.go
+index 463de873c..ea7940d4b 100644
+--- a/pipeline/frontend/yaml/types/workflow.go
++++ b/pipeline/frontend/yaml/types/workflow.go
+@@ -16,6 +16,7 @@ package types
+ 
+ import (
+ 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
++	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/matrix"
+ )
+ 
+ type (
+@@ -29,6 +30,7 @@ type (
+ 		Labels    map[string]string    `yaml:"labels,omitempty"`
+ 		DependsOn constraint.DependsOn `yaml:"depends_on,omitempty"`
+ 		SkipClone bool                 `yaml:"skip_clone,omitempty"`
++		Matrix    matrix.Matrix        `yaml:"matrix,omitempty"`
+ 		// Deprecated: use when.status. TODO remove in next major.
+ 		RunsOn []string `yaml:"runs_on,omitempty"`
+ 	}

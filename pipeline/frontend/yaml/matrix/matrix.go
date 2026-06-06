@@ -59,7 +59,7 @@ func Parse(data []byte) ([]Axis, error) {
 		return []Axis{}, nil
 	}
 
-	return calc(matrix), nil
+	return calcMatrix(matrix)
 }
 
 // ParseString parses the Yaml string matrix definition.
@@ -67,7 +67,11 @@ func ParseString(data string) ([]Axis, error) {
 	return Parse([]byte(data))
 }
 
-func calc(matrix Matrix) []Axis {
+func calcMatrix(matrix Matrix) ([]Axis, error) {
+	if len(matrix) == 0 {
+		return []Axis{}, nil
+	}
+
 	// calculate number of permutations and extract the list of tags
 	// (ie go_version, redis_version, etc)
 	var perm int
@@ -78,6 +82,10 @@ func calc(matrix Matrix) []Axis {
 			perm = len(v)
 		}
 		tags = append(tags, k)
+	}
+
+	if perm == 0 {
+		return []Axis{}, nil
 	}
 
 	// structure to hold the transformed result set
@@ -108,7 +116,12 @@ func calc(matrix Matrix) []Axis {
 		}
 	}
 
-	return axisList
+	return axisList, nil
+}
+
+// Calc calculates matrix permutations.
+func Calc(matrix Matrix) ([]Axis, error) {
+	return calcMatrix(matrix)
 }
 
 func parse(raw []byte) (Matrix, error) {

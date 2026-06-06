@@ -1,0 +1,636 @@
+{
+  "cancel": "ביטול",
+  "login_to_woodpecker_with": "התחבר אל Woodpecker עם",
+  "login": "התחבר",
+  "repos": "מאגרים",
+  "repositories": {
+    "title": "מאגרים",
+    "all": {
+      "title": "כל המאגרים",
+      "desc": "מאגרים ממוינים לפי יצירת הפעלת הצינור האחרונה"
+    },
+    "last": {
+      "title": "ביקור אחרון",
+      "desc": "המאגרים שביקרתם בהם לאחרונה ממוינים לפי זמן הגישה"
+    }
+  },
+  "docs": "תיעוד",
+  "api": "API",
+  "logout": "התנתק",
+  "search": "חיפוש…",
+  "username": "שם משתמש",
+  "password": "סיסמה",
+  "back": "חזור",
+  "unknown_error": "אירעה שגיאה לא ידועה",
+  "documentation_for": "תיעוד עבור \"{topic}\"",
+  "pipeline_feed": "הזנת צינורות",
+  "empty_list": "לא נמצאו {entity}!",
+  "not_found": {
+    "not_found": "ואו 404, או ששברנו משהו או שהיתה לך תקלה בהקלדה :-/",
+    "back_home": "חזרה לדף הבית"
+  },
+  "errors": {
+    "not_found": "השרת לא מצא את האובייקט המבוקש"
+  },
+  "time": {
+    "not_started": "עדיין לא התחיל",
+    "just_now": "רק עכשיו"
+  },
+  "repo": {
+    "manual_pipeline": {
+      "title": "הפעל צינור ידני",
+      "trigger": "הפעל צינור",
+      "select_branch": "בחר ענף",
+      "variables": {
+        "delete": "מחק משתנה",
+        "title": "משתני צינור נוספים",
+        "desc": "ציין משתנים נוספים לשימוש בצינור שלך. משתנים עם אותו שם יוחלפו.",
+        "name": "שם המשתנה",
+        "value": "ערך המשתנה"
+      },
+      "show_pipelines": "הצג צינורות",
+      "no_manual_workflows": "לא נמצאו זרימות עבודה מתאימות. וודא שלפחות זרימת עבודה אחת פועלת באירוע הידני."
+    },
+    "deploy_pipeline": {
+      "title": "הפעל פריסה עבור הצינור הנוכחי #{pipelineId}",
+      "enter_target": "סביבת יעד לפריסה",
+      "enter_task": "משימת פריסה",
+      "trigger": "פרוס",
+      "variables": {
+        "delete": "מחק משתנה",
+        "title": "משתני צינור נוספים",
+        "desc": "ציין משתנים נוספים לשימוש בצינור שלך. משתנים עם אותו שם יוחלפו.",
+        "name": "שם המשתנה",
+        "value": "ערך המשתנה"
+      }
+    },
+    "activity": "פעילות",
+    "branches": "ענפים",
+    "pull_requests": "בקשות משיכה",
+    "add": "הוסף מאגר",
+    "refresh": "רענן רשימת המאגרים",
+    "user_none": "לארגון/משתמש זה אין עדיין פרויקטים",
+    "not_allowed": "אין לך הרשאה לגשת למאגר זה",
+    "enable": {
+      "enable": "הפעל",
+      "enabled": "כבר מופעל",
+      "disabled": "כבוי",
+      "success": "המאגר הופעל",
+      "new_forge_repo": "מאגר חדש ב-forge",
+      "stale_wp_repo": "מאגר Woodpecker מיושן",
+      "conflict": "קונפליקט",
+      "conflict_desc": "מאגר זה נוצר מחדש ב-forge עם מזהה חדש, אך עדיין קיים רשומה מיושנת עם אותו שם ב-Woodpecker. מחק את המיושן כדי להפעיל את החדש או תקן את הישן.",
+      "forge_repo_missing": "מאגר ה-forge חסר!"
+    },
+    "open_in_forge": "פתח מאגר ב-forge",
+    "visibility": {
+      "visibility": "גלויות הפרויקט",
+      "public": {
+        "public": "ציבורי",
+        "desc": "כל אחד יכול לראות את הפרויקט שלך מבלי להתחבר."
+      },
+      "private": {
+        "private": "פרטי",
+        "desc": "רק אתה ובעלים אחרים של המאגר יכולים לראות את הפרויקט הזה."
+      },
+      "internal": {
+        "internal": "פנימי",
+        "desc": "רק משתמשים מאומתים של מופע Woodpecker יכולים לראות את הפרויקט הזה."
+      }
+    },
+    "settings": {
+      "not_allowed": "אין לך הרשאה לגשת להגדרות של מאגר זה",
+      "general": {
+        "general": "פרויקט",
+        "project": "הגדרות פרויקט",
+        "save": "שמור הגדרות",
+        "success": "הגדרות הפרויקט עודכנו",
+        "pipeline_path": {
+          "path": "נתיב הצינור",
+          "by_default": "ברירת מחדל: {paths}",
+          "desc": "נתיב לתצורת הצינור שלך (למשל {0}). תיקיות צריכות להסתיים ב-{1}.",
+          "desc_path_example": "my/path/"
+        },
+        "allow_pr": {
+          "allow": "אפשר בקשות משיכה",
+          "desc": "אפשר ביצוע צינורות בבקשות משיכה."
+        },
+        "allow_deploy": {
+          "allow": "אפשר פריסות",
+          "desc": "אפשר פריסות עבור צינורות מוצלחים. כל משתמש עם הרשאות דחיפה יכול להפעיל אותן, אז השתמש בזהירות."
+        },
+        "netrc_only_trusted": {
+          "netrc_only_trusted": "תוספי שיבוט מהימנים מותאמים אישית",
+          "desc": "תוספים שמקבלים גישה לאישורי netrc שיכולים לשמש לשיבוט מאגרים מה-forge או לדחוף אותם ל-forge.",
+          "placeholder": "תמונת תוסף"
+        },
+        "trusted": {
+          "trusted": "מהימן",
+          "network": {
+            "network": "רשת",
+            "desc": "מיכלים של הצינור מקבלים גישה להרשאות רשת כמו שינוי DNS."
+          },
+          "volumes": {
+            "volumes": "נפחים",
+            "desc": "מיכלים של הצינור מורשים לעגן נפחים."
+          },
+          "security": {
+            "security": "אבטחה",
+            "desc": "מיכלים של הצינור מקבלים גישה להרשאות אבטחה."
+          }
+        },
+        "timeout": {
+          "timeout": "פסק זמן",
+          "minutes": "דקות"
+        },
+        "cancel_prev": {
+          "cancel": "בטל צינורות קודמים",
+          "desc": "אירוע נבחר מפעיל ביטול של צינורות ממתינים ופועלים של אותו אירוע לפני התחלת הבא."
+        }
+      },
+      "crons": {
+        "crons": "Cron",
+        "desc": "משימות Cron יכולות לשמש להפעלת צינורות על בסיס קבוע.",
+        "show": "הצג cron",
+        "add": "הוסף cron",
+        "none": "אין עדיין cron.",
+        "save": "שמור cron",
+        "created": "Cron נוצר",
+        "saved": "Cron נשמר",
+        "deleted": "Cron נמחק",
+        "next_exec_local": "הפעלה הבאה: {local}",
+        "next_exec_both": "הפעלה הבאה: {local} ({zoned} {timezone})",
+        "not_executed_yet": "עדיין לא בוצעה",
+        "run": "הפעל עכשיו",
+        "branch": {
+          "title": "ענף",
+          "placeholder": "ענף (משתמש בענף ברירת המחדל אם ריק)"
+        },
+        "name": {
+          "name": "שם",
+          "placeholder": "שם משימת ה-cron"
+        },
+        "schedule": {
+          "title": "לוח זמנים",
+          "placeholder": "לוח זמנים"
+        },
+        "timezone": "אזור זמן",
+        "your_timezone": "באזור הזמן של הדפדפן שלך.",
+        "edit": "ערוך cron",
+        "delete": "מחק cron",
+        "enabled": "מופעל"
+      },
+      "badge": {
+        "badge": "תג",
+        "type": "תחביר",
+        "type_url": "URL",
+        "type_markdown": "Markdown",
+        "type_html": "HTML",
+        "branch": "ענף",
+        "events": "אירועים",
+        "workflow": "זרימת עבודה",
+        "step": "שלב"
+      },
+      "actions": {
+        "actions": "פעולות",
+        "repair": {
+          "repair": "תקן מאגר",
+          "success": "המאגר תוקן"
+        },
+        "disable": {
+          "disable": "השבת מאגר",
+          "success": "המאגר הושבת"
+        },
+        "enable": {
+          "enable": "הפעל מאגר",
+          "success": "המאגר הופעל"
+        },
+        "delete": {
+          "delete": "מחק מאגר",
+          "confirm": "כל הנתונים יאבדו לאחר פעולה זו!\n\nהאם אתה באמת רוצה להמשיך?",
+          "success": "המאגר נמחק"
+        }
+      }
+    },
+    "pipeline": {
+      "tasks": "משימות",
+      "config": "תצורה",
+      "files": "קבצים שהשתנו",
+      "no_pipelines": "עדיין לא התחילו צינורות.",
+      "load_more": "טען עוד",
+      "no_pipeline_steps": "אין שלבי צינור זמינים!",
+      "step_not_started": "השלב הזה עוד לא התחיל.",
+      "pipelines_for": "צינורות עבור הענף \"{branch}\"",
+      "pipelines_for_pr": "צינורות עבור בקשת משיכה #{index}",
+      "exit_code": "קוד יציאה {exitCode}",
+      "loading": "טוען…",
+      "no_logs": "אין יומנים",
+      "pipeline": "צינור #{pipelineId}",
+      "log_title": "יומני שלב",
+      "log_download_error": "אירעה שגיאה בזמן הורדת קובץ היומן",
+      "log_delete_confirm": "האם אתה באמת רוצה למחוק את יומני השלב?",
+      "log_delete_error": "אירעה שגיאה בזמן מחיקת יומני השלב",
+      "actions": {
+        "cancel": "ביטול",
+        "restart": "הפעל מחדש",
+        "canceled": "השלב הזה בוטל.",
+        "skipped": "השלב הזה דולג.",
+        "cancel_success": "הצינור בוטל",
+        "deploy": "פרוס",
+        "restart_success": "הצינור הופעל מחדש",
+        "log_download": "הורד",
+        "log_delete": "מחק",
+        "log_auto_scroll": "הפעל גלילה אוטומטית",
+        "log_auto_scroll_off": "כבה גלילה אוטומטית",
+        "expand_all": "הרחב הכל",
+        "collapse_all": "צמצם הכל"
+      },
+      "protected": {
+        "awaits": "צינור זה מחכה לאישור של אחראי!",
+        "approve": "אשר",
+        "decline": "דחה",
+        "declined": "צינור זה נדחה!",
+        "approve_success": "הצינור אושר",
+        "decline_success": "הצינור נדחה"
+      },
+      "event": {
+        "push": "דחיפה",
+        "tag": "תג",
+        "pr": "בקשת משיכה",
+        "pr_closed": "בקשת משיכה אומצה/נסגרה",
+        "pr_metadata": "מטא נתונים של בקשת משיכה השתנו",
+        "deploy": "פריסה",
+        "cron": "Cron",
+        "manual": "ידני",
+        "release": "שחרור"
+      },
+      "status": {
+        "status": "סטטוס: {status}",
+        "blocked": "חסום",
+        "pending": "ממתין",
+        "running": "רץ",
+        "started": "התחיל",
+        "skipped": "דולג",
+        "canceled": "בוטל",
+        "success": "הצליח",
+        "declined": "נדחה",
+        "error": "שגיאה",
+        "failure": "כישלון",
+        "killed": "נהרג"
+      },
+      "errors": "שגיאות",
+      "warnings": "אזהרות",
+      "show_errors": "הצג שגיאות",
+      "we_got_some_errors": "אוי לא, אירעה שגיאה!",
+      "duration": "משך הצינור: {duration}",
+      "created": "נוצר: {created}",
+      "version": "גרסת Woodpecker שעליה בוצע צינור זה.",
+      "version_header": "גרסת Woodpecker",
+      "cancel_info": {
+        "superseded_by": "הוחלף על ידי #{pipelineId}",
+        "canceled_by_user": "בוטל על ידי {user}",
+        "canceled_by_step": "בוטל עקב {step}"
+      },
+      "debug": {
+        "title": "ניפוי באגים",
+        "download_metadata": "הורד מטא נתונים",
+        "metadata_download_error": "שגיאה בהורדת מטא נתונים",
+        "metadata_download_successful": "מטא נתונים הורדו בהצלחה",
+        "no_permission": "אין לך הרשאה לגשת למידע הניפוי באגים",
+        "metadata_exec_title": "הפעל צינור מחדש מקומית",
+        "metadata_exec_desc": "הורד את המטא נתונים של צינור זה כדי להפעיל אותו מקומית. זה מאפשר לך לתקן בעיות ולבדוק שינויים לפני שתבצע commit. יש להתקין את ה-CLI של Woodpecker מקומית באותה גירסה כמו השרת."
+      },
+      "view": "הצג צינור"
+    }
+  },
+  "org": {
+    "settings": {
+      "not_allowed": "אין לך הרשאה לגשת להגדרות של ארגון זה",
+      "secrets": {
+        "desc": "סודות ארגון יכולים לשמש בצינורות של כל המאגרים בבעלות הארגון."
+      },
+      "registries": {
+        "desc": "ניתן להוסיף אישורי רישום של ארגון לשימוש בתמונות פרטיות עבור כל הצינורות של ארגון."
+      },
+      "agents": {
+        "desc": "סוכנים הרשומים עבור ארגון זה."
+      }
+    }
+  },
+  "admin": {
+    "settings": {
+      "settings": "הגדרות מנהל",
+      "not_allowed": "אין לך הרשאה לגשת להגדרות השרת",
+      "secrets": {
+        "desc": "סודות גלובליים יכולים לשמש בצינורות של כל המאגרים.",
+        "warning": "סודות אלה זמינים לכל המשתמשים."
+      },
+      "registries": {
+        "desc": "ניתן להוסיף אישורי רישום גלובליים לשימוש בתמונות פרטיות עבור כל הצינורות.",
+        "warning": "אישורי רישום אלה זמינים לכל המשתמשים."
+      },
+      "agents": {
+        "agents": "סוכנים",
+        "desc": "סוכנים הרשומים לשרת זה.",
+        "none": "אין עדיין סוכנים.",
+        "id": "מזהה",
+        "add": "הוסף סוכן",
+        "save": "שמור סוכן",
+        "show": "הצג סוכנים",
+        "created": "סוכן נוצר",
+        "saved": "סוכן נשמר",
+        "deleted": "סוכן נמחק",
+        "name": {
+          "name": "שם",
+          "placeholder": "שם הסוכן"
+        },
+        "no_schedule": {
+          "name": "השבת סוכן",
+          "placeholder": "עצור את הסוכן מלקחת משימות חדשות"
+        },
+        "token": "אסימון",
+        "platform": {
+          "platform": "פלטפורמה",
+          "badge": "פלטפורמה"
+        },
+        "backend": {
+          "backend": "Backend",
+          "badge": "backend"
+        },
+        "capacity": {
+          "capacity": "קיבולת",
+          "desc": "הכמות המקסימלית של צינורות מקבילים שמופעל על ידי סוכן זה.",
+          "badge": "קיבולת"
+        },
+        "custom_labels": {
+          "custom_labels": "תוויות מותאמות אישית",
+          "desc": "התוויות המותאמות אישית שנקבעו על ידי מנהל הסוכן בעת הפעלת הסוכן."
+        },
+        "org": {
+          "badge": "ארגון"
+        },
+        "version": "גרסה",
+        "last_contact": {
+          "last_contact": "אישורים אחרון",
+          "badge": "אישורים אחרון"
+        },
+        "never": "לעולם לא",
+        "delete_confirm": "האם אתה באמת רוצה למחוק את הסוכן הזה? הוא כבר לא יוכל להתחבר לשרת.",
+        "edit_agent": "ערוך סוכן",
+        "delete_agent": "מחק סוכן"
+      },
+      "queue": {
+        "queue": "תור",
+        "desc": "משימות הממתינות לביצוע על ידי סוכנים.",
+        "pause": "השהה",
+        "resume": "המשך",
+        "paused": "התור מושהה",
+        "resumed": "התור הומשך",
+        "tasks": "משימות",
+        "task_running": "המשימה רצה",
+        "task_pending": "המשימה ממתינה",
+        "task_waiting_on_deps": "המשימה מחכה על תלויות",
+        "agent": "סוכן",
+        "waiting_for": "מחכה ל-",
+        "stats": {
+          "completed_count": "משימות הושלמו",
+          "worker_count": "פנוי",
+          "running_count": "רץ",
+          "pending_count": "ממתין",
+          "waiting_on_deps_count": "מחכה על תלויות"
+        }
+      },
+      "users": {
+        "users": "משתמשים",
+        "desc": "משתמשים הרשומים לשרת זה.",
+        "login": "שם משתמש",
+        "email": "דוא\"ל",
+        "avatar_url": "כתובת URL של אווטאר",
+        "save": "שמור משתמש",
+        "cancel": "ביטול",
+        "show": "הצג משתמשים",
+        "add": "הוסף משתמש",
+        "none": "אין עדיין משתמשים.",
+        "delete_confirm": "האם אתה באמת רוצה למחוק את המשתמש הזה? זה גם ימחק את כל המאגרים בבעלות המשתמש הזה.",
+        "deleted": "משתמש נמחק",
+        "created": "משתמש נוצר",
+        "saved": "משתמש נשמר",
+        "admin": {
+          "admin": "מנהל",
+          "placeholder": "המשתמש הוא מנהל",
+          "admin_warning": "למשתמש הזה יש הרשאות מנהל בגלל תצורת הסביבה שלך. אם תבטל את ההרשאה כאן, המשתמש יקבל אותה שוב כשיתחבר בפעם הבאה."
+        },
+        "delete_user": "מחק משתמש",
+        "edit_user": "ערוך משתמש",
+        "forge": "Forge"
+      },
+      "orgs": {
+        "orgs": "ארגונים",
+        "desc": "ארגונים שבבעלותם מאגרים בשרת זה.",
+        "none": "אין עדיין ארגונים.",
+        "org_settings": "הגדרות ארגון",
+        "delete_org": "מחק ארגון",
+        "deleted": "ארגון נמחק",
+        "delete_confirm": "האם אתה באמת רוצה למחוק את הארגון הזה? זה גם ימחק את כל המאגרים בבעלות הארגון הזה.",
+        "view": "הצג ארגון"
+      },
+      "repos": {
+        "repos": "מאגרים",
+        "desc": "מאגרים שהופעלו או שהופעלו בעבר בשרת זה.",
+        "none": "אין עדיין מאגרים.",
+        "view": "הצג מאגר",
+        "settings": "הגדרות מאגר",
+        "disabled": "כבוי",
+        "repair": {
+          "repair": "תקן הכל",
+          "success": "המאגרים תוקנו"
+        }
+      }
+    }
+  },
+  "user": {
+    "settings": {
+      "settings": "הגדרות משתמש",
+      "general": {
+        "general": "חשבון",
+        "language": "שפה",
+        "theme": {
+          "theme": "ערכת נושא",
+          "light": "בהיר",
+          "dark": "כהה",
+          "auto": "אוטומטי"
+        },
+        "pipeline_logs": {
+          "pipeline_logs": "יומני צינור",
+          "collapse_groups": {
+            "collapse": "צמצם קבוצות יומן כברירת מחדל",
+            "desc": "כאשר פותחים שלב שהושלם, צמצם את כל קבוצות הפקודות כדי להציג רק את המתאר."
+          }
+        }
+      },
+      "secrets": {
+        "desc": "סודות משתמש יכולים לשמש בצינורות של כל המאגרים בבעלות המשתמש."
+      },
+      "registries": {
+        "desc": "ניתן להוסיף אישורי רישום של משתמש לשימוש בתמונות פרטיות עבור כל הצינורות האישיים."
+      },
+      "cli_and_api": {
+        "cli_and_api": "CLI & API",
+        "desc": "אסימון גישה אישי, שימוש ב-CLI וב-API",
+        "token": "אסימון גישה אישי",
+        "api_usage": "שימוש לדוגמה ב-API",
+        "cli_usage": "שימוש לדוגמה ב-CLI",
+        "download_cli": "הורד CLI",
+        "reset_token": "איפוס אסימון",
+        "swagger_ui": "Swagger UI"
+      },
+      "agents": {
+        "desc": "סוכנים הרשומים למאגרים החשבון שלך."
+      }
+    }
+  },
+  "secrets": {
+    "secrets": "סודות",
+    "desc": "סודות יכולים לשמש בכל הצינורות של מאגר זה.",
+    "none": "אין עדיין סודות.",
+    "add": "הוסף סוד",
+    "save": "שמור סוד",
+    "show": "הצג סודות",
+    "name": "שם",
+    "value": "ערך",
+    "note": "הערה",
+    "delete_confirm": "האם אתה באמת רוצה למחוק את הסוד הזה?",
+    "deleted": "סוד נמחק",
+    "created": "סוד נוצר",
+    "saved": "סוד נשמר",
+    "plugins": {
+      "images": "זמין רק עבור התוספים הבאים",
+      "desc": "רשימת תמונות תוספים שבהן הסוד הזה זמין. השאר ריק כדי לאפשר את כל התוספים והשלבים הרגילים."
+    },
+    "events": {
+      "events": "זמין באירועים הבאים",
+      "warning": "חשיפת סודות לבקשות משיכה יכולה לאפשר לשחקנים רעים לגנוב את הסודות שלך עם בקשת משיכה מזימה."
+    },
+    "edit": "ערוך סוד",
+    "delete": "מחק סוד"
+  },
+  "registries": {
+    "registries": "רישומים",
+    "credentials": "אישורי רישום",
+    "desc": "ניתן להוסיף אישורי רישום לשימוש בתמונות פרטיות לצינורות.",
+    "none": "אין עדיין אישורי רישום.",
+    "address": {
+      "address": "כתובת",
+      "desc": "כתובת הרישום (למשל docker.io)"
+    },
+    "show": "הצג רישומים",
+    "save": "שמור רישום",
+    "add": "הוסף רישום",
+    "view": "הצג רישום",
+    "edit": "ערוך רישום",
+    "delete": "מחק רישום",
+    "delete_confirm": "האם אתה באמת רוצה למחוק את הרישום הזה?",
+    "created": "אישורי רישום נוצרו",
+    "saved": "אישורי רישום נשמרו",
+    "deleted": "אישורי רישום נמחקו"
+  },
+  "default": "ברירת מחדל",
+  "info": "מידע",
+  "running_version": "אתה מפעיל את Woodpecker {0}",
+  "update_woodpecker": "אנא עדכן את מופע Woodpecker שלך ל-{0}",
+  "global_level_secret": "סוד גלובלי",
+  "org_level_secret": "סוד ארגוני",
+  "global_level_registry": "רישום גלובלי",
+  "org_level_registry": "רישום ארגוני",
+  "login_to_cli": "התחבר ל-CLI",
+  "login_to_cli_description": "אם תמשיך, תתחבר ל-CLI.",
+  "abort": "בטל",
+  "cli_login_success": "ההתחברות ל-CLI הצליחה",
+  "cli_login_failed": "ההתחברות ל-CLI נכשלה",
+  "cli_login_denied": "ההתחברות ל-CLI נדחתה",
+  "return_to_cli": "כעת אתה יכול לסגור טאב זה ולחזור ל-CLI.",
+  "settings": "הגדרות",
+  "oauth_error": "שגיאה בזמן אימות מול ספק OAuth",
+  "internal_error": "אירעה שגיאה פנימית",
+  "registration_closed": "ההרשמה סגורה",
+  "access_denied": "אין לך הרשאה לגשת למופע זה",
+  "org_access_denied": "אין לך הרשאה לגשת לארגון זה",
+  "invalid_state": "מצב OAuth לא חוקי",
+  "extensions": "הרחבות",
+  "extensions_description": "הרחבות הן שירותי HTTP שיכולים להיקרא על ידי Woodpecker במקום להשתמש במובנים.",
+  "extension_endpoint_placeholder": "למשל https://example.com/api",
+  "config_extension_endpoint": "נקודת קצה של הרחבת תצורה",
+  "registry_extension_endpoint": "נקודת קצה של הרחבת רישום",
+  "config_extension_exclusive": "בלעדי",
+  "config_extension_exclusive_desc": "אם מופעל, ידלג על כל שאר הדרכים לאחזור תצורה, כולל ה-forge.",
+  "secret_extension_endpoint": "נקודת קצה של הרחבת סוד",
+  "extension_netrc": "כלול אישורי netrc",
+  "extension_netrc_desc": "שלח אישורי netrc של ה-forge להרחבה.",
+  "extensions_signatures_public_key": "מפתח ציבורי עבור חתימות",
+  "extensions_signatures_public_key_description": "יש להשתמש במפתח ציבורי זה על ידי ההרחבות שלך כדי לאמת שיחות webhook מ-Woodpecker.",
+  "extensions_configuration_saved": "תצורת הרחבות נשמרה",
+  "require_approval": {
+    "desc": "מנע מצינורות מזימים לחשוף סודות או להפעיל משימות מזימות על ידי אישורם לפני הביצוע.",
+    "require_approval_for": "דרישות אישור",
+    "none": "כלום",
+    "none_desc": "כל אירוע מפעיל צינורות, כולל בקשות משיכה. הגדרה זו יכולה להיות מסוכנת ומומלצת רק למופעים פרטיים.",
+    "forks": "בקשת משיכה ממאגר מפותח",
+    "pull_requests": "כל בקשות המשיכה",
+    "all_events": "כל האירועים מה-forge",
+    "allowed_users": {
+      "allowed_users": "משתמשים מורשים",
+      "desc": "צינורות שנוצרו על ידי המשתמשים הרשומים הללו לעולם לא דורשים אישור."
+    }
+  },
+  "no_search_results": "לא נמצאו תוצאות",
+  "forges": "Forges",
+  "forges_desc": "קבע forges המארחים מאגרים ש-Woodpecker צריך לפעול עבורם.",
+  "add_forge": "הוסף forge",
+  "show_forges": "הצג forges",
+  "github": "GitHub",
+  "gitlab": "GitLab",
+  "bitbucket": "Bitbucket",
+  "bitbucket_dc": "Bitbucket Data Center",
+  "gitea": "Gitea",
+  "forgejo": "Forgejo",
+  "addon": "תוסף",
+  "forge_type": "סוג Forge",
+  "oauth_client_id": "מזהה לקוח OAuth",
+  "oauth_client_secret": "סיסמת לקוח OAuth",
+  "oauth_host": "מארח OAuth",
+  "merge_ref": "Merge ref",
+  "merge_ref_desc": "Ref לשימוש עבור בסיס מיזוג. זה משמש לקביעת ההבדל עבור בקשות משיכה.",
+  "public_only": "ציבורי בלבד",
+  "public_only_desc": "הצג רק מאגרים ציבוריים.",
+  "git_username": "שם משתמש Git",
+  "git_username_desc": "שם המשתמש עבור משתמש ה-Git.",
+  "git_password": "סיסמת Git",
+  "git_password_desc": "סיסמה או אסימון גישה אישי עבור משתמש ה-Git.",
+  "executable": "קובץ הפעלה",
+  "executable_desc": "נתיב לקובץ ההפעלה של התוסף.",
+  "save": "שמור",
+  "add": "הוסף",
+  "skip_verify": "דלג על אימות SSL",
+  "skip_verify_desc": "דלג על אימות SSL עבור חיבור ה-API. זה לא מומלץ לשימוש בייצור.",
+  "url": "URL",
+  "forge_managed_by_env": "ה-forge הראשי מנוהל על ידי משתני סביבה. כל שינוי ל-forge זה יוחזר בעת אתחול מחדש.",
+  "oauth_redirect_url": "כתובת URL הפנייה של OAuth",
+  "forge_created": "Forge נוצר",
+  "advanced_options": "אפשרויות מתקדמות",
+  "leave_empty_to_keep_current_value": "השאר ריק כדי לשמור את הערך הנוכחי",
+  "forge_deleted": "Forge נמחק",
+  "forge_delete_confirm": "האם אתה באמת רוצה למחוק את ה-forge הזה? זה גם ימחק את כל המאגרים, המשתמשים והצינורות הקשורים ל-forge זה.",
+  "edit_forge": "ערוך forge",
+  "delete_forge": "מחק forge",
+  "no_forges": "אין עדיין forges.",
+  "use_this_redirect_url_to_create": "השתמש בכתובת URL הפנייה זו כדי ליצור או לעדכן את יישום OAuth.",
+  "developer_settings_to_create": "עבור אל {0} וקבע את יישום OAuth.",
+  "developer_settings": "הגדרות מפתח",
+  "public_url_for_oauth_if": "כתובת URL ציבורית עבור OAuth אם שונה מכתובת URL ({0})",
+  "forge_saved": "Forge נשמר",
+  "fullscreen": "מסך מלא",
+  "exit_fullscreen": "צא ממסך מלא",
+  "help_translating": "אתה יכול לעזור לתרגם את Woodpecker לשפה שלך ב-{0}.",
+  "weblate": "ה-Weblate שלנו",
+  "disabled": "כבוי"
+}

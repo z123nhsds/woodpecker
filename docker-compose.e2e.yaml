@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: docker.io/mysql:9.7.0
+    environment:
+      MYSQL_DATABASE: woodpecker
+      MYSQL_ROOT_PASSWORD: woodpecker
+      MYSQL_USER: woodpecker
+      MYSQL_PASSWORD: woodpecker
+    ports:
+      - '3306'
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pwoodpecker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - e2e-mysql-data:/var/lib/mysql
+
+  server:
+    depends_on:
+      mysql:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: server
+    ports:
+      - '8000:8000'
+      - '9000:9000'
+    environment:
+      WOODPECKER_OPEN: 'true'
+      WOODPECKER_HOST: http://server:8000
+      WOODPECKER_ADMIN: e2e-test
+      WOODPECKER_AGENT_SECRET: e2e-agent-secret
+      WOODPECKER_DATABASE_DRIVER: mysql
+      WOODPECKER_DATABASE_DATASOURCE: root:woodpecker@tcp(mysql:3306)/woodpecker?parseTime=true
+      WOODPECKER_DEFAULT_CLONE_PLUGIN: docker.io/woodpeckerci/plugin-git:latest
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+    volumes:
+      - e2e-server-data:/var/lib/woodpecker
+
+  agent:
+    depends_on:
+      server:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: agent
+    environment:
+      WOODPECKER_SERVER: server:9000
+      WOODPECKER_AGENT_SECRET: e2e-agent-secret
+      WOODPECKER_MAX_WORKFLOWS: '2'
+      WOODPECKER_BACKEND: docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - e2e-agent-config:/etc/woodpecker
+
+volumes:
+  e2e-mysql-data:
+  e2e-server-data:
+  e2e-agent-config:

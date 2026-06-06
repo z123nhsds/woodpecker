@@ -184,6 +184,12 @@ test-agent: ## Test agent code
 test-server: ## Test server code
 	go test -race -cover -coverprofile server-coverage.out -timeout 60s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(shell go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
 
+test-server-coverage: ## Test server code with coverage report for CI
+	go test -race -cover -coverprofile server-coverage.out -timeout 120s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(shell go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
+
+test-lib-coverage: ## Test lib code with coverage report for CI
+	go test -race -cover -coverprofile lib-coverage.out -timeout 120s -tags 'test $(TAGS)' $(shell go list ./... | grep -v '/cmd\|/agent\|/cli\|/server')
+
 test-cli: ## Test cli code
 	go test -race -cover -coverprofile cli-coverage.out -timeout 60s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/cli go.woodpecker-ci.org/woodpecker/v3/cli/...
 
@@ -206,58 +212,18 @@ test-lib: ## Test lib code
 test-e2e: ## Test by running yaml config and compare expected result
 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
 
-.PHONY: test
-test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
+test-e2e-integration: ## Run full E2E integration test with server + agent + MySQL
+	docker compose -f docker-compose.e2e.yaml up -d --wait
+	WOODPECKER_HOST=http://localhost:8000 \
+	WOODPECKER_TOKEN=$$(docker compose -f docker-compose.e2e.yaml exec -T server woodpecker-cli user create --admin e2e-test 2>/dev/null || true) \
+	go test -race -timeout 300s -tags 'test $(TAGS)' ./e2e/integration/...
+	docker compose -f docker-compose.e2e.yaml down -v
 
-##@ Build
+test-e2e-integration-clean: ## Stop and remove E2E integration test containers
+	docker compose -f docker-compose.e2e.yaml down -v
 
-build-ui: ## Build UI
-	(cd web/; pnpm install --frozen-lockfile; pnpm build)
-
-build-server: build-ui generate-openapi ## Build server
-	CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-server${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/server
-
-build-agent: ## Build agent
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-agent${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/agent
-
-build-cli: ## Build cli
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-cli${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/cli
-
-build-tarball: ## Build tar archive
-	mkdir -p ${DIST_DIR} && tar chzvf ${DIST_DIR}/woodpecker-src.tar.gz \
-	  --exclude="*.exe" \
-	  --exclude="./.pnpm-store" \
-	  --exclude="node_modules" \
-	  --exclude="./dist" \
-	  --exclude="./data" \
-	  --exclude="./build" \
-	  --exclude="./.git" \
-	  .
-
-.PHONY: build
-build: build-agent build-server build-cli ## Build all binaries
-
-.PHONY: release-frontend
-release-frontend: build-ui ## Build frontend
-
-cross-compile-server: ## Cross compile the server
-	$(foreach platform,$(subst ;, ,$(PLATFORMS)),\
-		TARGETOS=$(firstword $(subst |, ,$(platform))) \
-		TARGETARCH_XGO=$(subst arm64/v8,arm64,$(subst arm/v7,arm-7,$(word 2,$(subst |, ,$(platform))))) \
-		TARGETARCH_BUILDX=$(subst arm64/v8,arm64,$(subst arm/v7,arm,$(word 2,$(subst |, ,$(platform))))) \
-		make release-server-xgo || exit 1; \
-	)
-	tree ${DIST_DIR}
-
-release-server-xgo: check-xgo ## Create server binaries for release using xgo
-	@echo "Building for:"
-	@echo "os:$(TARGETOS)"
-	@echo "arch orgi:$(TARGETARCH)"
-	@echo "arch (xgo):$(TARGETARCH_XGO)"
 	@echo "arch (buildx):$(TARGETARCH_BUILDX)"
 	# build via xgo
-	CGO_CFLAGS="$(CGO_CFLAGS)" xgo -go $(XGO_VERSION) -dest ${DIST_DIR}/server/$(TARGETOS)_$(TARGETARCH_BUILDX) -tags 'netgo osusergo grpcnotrace $(TAGS)' -ldflags '-linkmode external $(LDFLAGS)' -targets '$(TARGETOS)/$(TARGETARCH_XGO)' -out woodpecker-server -pkg cmd/server .
-	# move binary into subfolder depending on target os and arch
 	@if [ "$${XGO_IN_XGO:-0}" -eq "1" ]; then \
 	  echo "inside xgo image"; \
 	  mkdir -p ${DIST_DIR}/server/$(TARGETOS)_$(TARGETARCH_BUILDX); \

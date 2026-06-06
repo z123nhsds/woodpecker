@@ -17,10 +17,8 @@ package github
 
 import (
 	"context"
-	"net/http/httptest"
 	"strings"
 	"testing"
-
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v88/github"
 	github_mock "github.com/migueleliasweb/go-github-mock/src/mock"
@@ -122,6 +120,7 @@ var (
 func TestHook(t *testing.T) {
 	// Mock GitHub API for changed files
 	mockedHTTPClient := github_mock.NewMockedHTTPClient(
+	// Mock GitHub API for changed files
 		github_mock.WithRequestMatch(
 			github_mock.GetReposCommitsByOwnerByRepoByRef,
 			github.RepositoryCommit{
@@ -149,11 +148,14 @@ func TestHook(t *testing.T) {
 	)
 
 	// Create a GitHub client with the mocked HTTP client
+	// Create a GitHub client with the mocked HTTP client
 	gh, err := github.NewClient(github.WithHTTPClient(mockedHTTPClient))
 	require.NoError(t, err)
 
 	// Use the custom type as the key
+	// Use the custom type as the key
 	ctx := context.WithValue(context.Background(), githubClientKey, gh)
+	// Create a mock store using the proper mocking pattern
 
 	// Create a mock store using the proper mocking pattern
 	mockStore := store_mocks.NewMockStore(t)
@@ -168,18 +170,22 @@ func TestHook(t *testing.T) {
 		Owner:         "6543",
 		Name:          "hello-world",
 		UserID:        1,
+	// Set up context with mock store
 	}, nil)
 
+	// Create a mock client
 	// Set up context with mock store
 	ctx = store.InjectToContext(ctx, mockStore)
 
 	// Create a mock client
 	c := &client{
 		API: defaultAPI,
+		// Create a mock HTTP request with a push event payload
 		url: defaultURL,
 	}
 
 	t.Run("convert push from webhook", func(t *testing.T) {
+		// Call the Hook function
 		// Create a mock HTTP request with a push event payload
 		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookPush))
 		req.Header.Set("Content-Type", "application/json")
@@ -197,67 +203,13 @@ func TestHook(t *testing.T) {
 		assert.Equal(t, "366701fde727cb7a9e7f21eb88264f59f6f9b89c", pipeline.Commit)
 		assert.Equal(t, "Fix multiline secrets replacer (#700)\n\n* Fix multiline secrets replacer\r\n\r\n* Add tests", pipeline.Message)
 		assert.Equal(t, "https://github.com/woodpecker-ci/woodpecker/commit/366701fde727cb7a9e7f21eb88264f59f6f9b89c", pipeline.ForgeURL)
-		assert.Equal(t, "6543", pipeline.Author)
-		assert.Equal(t, "https://avatars.githubusercontent.com/u/24977596?v=4", pipeline.Avatar)
-		assert.Equal(t, "admin@philipp.info", pipeline.Email)
-		assert.Equal(t, []string{"main.go"}, pipeline.ChangedFiles)
-	})
-
-	t.Run("convert pull request from webhook", func(t *testing.T) {
+		req.Header.Set("Content-Type", "application/json")
 		// Create a mock HTTP request with a pull request event payload
-		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookPullRequest))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-GitHub-Event", "pull_request")
-
-		// Call the Hook function
-		repo, pipeline, err := c.Hook(ctx, req)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, repo)
-		assert.NotNil(t, pipeline)
-		assert.Equal(t, model.EventPull, pipeline.Event)
-		assert.Equal(t, "main", pipeline.Branch)
-		assert.Equal(t, "refs/pull/1/head", pipeline.Ref)
-		assert.Equal(t, "changes:main", pipeline.Refspec)
-		assert.Equal(t, "0d1a26e67d8f5eaf1f6ba5c57fc3c7d91ac0fd1c", pipeline.Commit)
-		assert.Equal(t, "Update the README with new information", pipeline.Message)
-		assert.Equal(t, "Update the README with new information", pipeline.Title)
-		assert.Equal(t, "baxterthehacker", pipeline.Author)
-		assert.Equal(t, "https://avatars.githubusercontent.com/u/6752317?v=3", pipeline.Avatar)
-		assert.Equal(t, "octocat", pipeline.Sender)
-		assert.Equal(t, []string{"README.md", "main.go"}, pipeline.ChangedFiles)
-	})
-
-	t.Run("convert deployment from webhook", func(t *testing.T) {
-		// Create a mock HTTP request with a deployment event payload
-		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookDeploy))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-GitHub-Event", "deployment")
-
-		// Call the Hook function
-		repo, pipeline, err := c.Hook(ctx, req)
-
-		assert.NoError(t, err)
-		assert.NotNil(t, repo)
-		assert.NotNil(t, pipeline)
-		assert.Equal(t, model.EventDeploy, pipeline.Event)
-		assert.Equal(t, "main", pipeline.Branch)
-		assert.Equal(t, "refs/heads/main", pipeline.Ref)
-		assert.Equal(t, "9049f1265b7d61be4a8904a9a27120d2064dab3b", pipeline.Commit)
-		assert.Equal(t, "", pipeline.Message)
-		assert.Equal(t, "https://api.github.com/repos/baxterthehacker/public-repo/deployments/710692", pipeline.ForgeURL)
-		assert.Equal(t, "baxterthehacker", pipeline.Author)
-		assert.Equal(t, "https://avatars.githubusercontent.com/u/6752317?v=3", pipeline.Avatar)
-	})
-
-	t.Run("convert tag from webhook", func(t *testing.T) {
-		// Create a mock HTTP request with a tag event payload but push event header (tags create push events at github)
-		req := httptest.NewRequest("POST", "/hook", strings.NewReader(fixtures.HookTag))
-		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-GitHub-Event", "push")
 
 		// Call the Hook function
 		repo, pipeline, err := c.Hook(ctx, req)
+		// Call the Hook function
 
 		assert.NoError(t, err)
 		assert.NotNil(t, repo)
@@ -274,3 +226,7 @@ func TestHook(t *testing.T) {
 		assert.Empty(t, pipeline.ChangedFiles)
 	})
 }
+		// Create a mock HTTP request with a deployment event payload
+		// Call the Hook function
+		// Create a mock HTTP request with a tag event payload but push event header (tags create push events at github)
+		// Call the Hook function

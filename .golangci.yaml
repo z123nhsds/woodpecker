@@ -33,6 +33,7 @@ linters:
     - mnd
     - nolintlint
     - revive
+    - gosec
     - rowserrcheck
     - sqlclosecheck
     - staticcheck

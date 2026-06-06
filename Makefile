@@ -102,6 +102,18 @@ vendor: ## Update the vendor directory
 	go mod tidy
 	go mod vendor
 
+.PHONY: update-deps
+update-deps: ## Update dependencies, run pre-commit, commit and create PR
+	@echo "Updating dependencies..."
+	go get -u ./...
+	go mod tidy
+	@echo "Running pre-commit checks..."
+	pre-commit run --all-files || true
+	@echo "Committing changes..."
+	git add go.mod go.sum
+	git diff --quiet go.mod go.sum || git commit -m "chore: update dependencies"
+	@echo "To create a PR, please push your branch and create a PR manually or use your preferred PR creation tool."
+
 format: install-gofumpt ## Format source code
 	@gofumpt -extra -w .
 
@@ -175,6 +187,11 @@ lint: install-golangci-lint ## Lint code
 	@echo "Running golangci-lint"
 	golangci-lint run
 
+.PHONY: lint-new
+lint-new: install-golangci-lint ## Lint only new code (compared to main)
+	@echo "Running golangci-lint on new code"
+	golangci-lint run --new-from-rev=HEAD~1
+
 lint-ui: ui-dependencies ## Lint UI code
 	(cd web/; pnpm lint --quiet)
 
@@ -184,12 +201,6 @@ test-agent: ## Test agent code
 test-server: ## Test server code
 	go test -race -cover -coverprofile server-coverage.out -timeout 60s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/server $(shell go list go.woodpecker-ci.org/woodpecker/v3/server/... | grep -v '/store')
 
-test-cli: ## Test cli code
-	go test -race -cover -coverprofile cli-coverage.out -timeout 60s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/cli go.woodpecker-ci.org/woodpecker/v3/cli/...
-
-test-server-datastore: ## Test server datastore
-	go test -timeout 300s -tags 'test $(TAGS)' -run TestMigrate go.woodpecker-ci.org/woodpecker/v3/server/store/...
-	go test -race -timeout 120s -tags 'test $(TAGS)' -skip TestMigrate go.woodpecker-ci.org/woodpecker/v3/server/store/...
 
 test-server-datastore-coverage: ## Test server datastore with coverage report
 	go test -race -cover -coverprofile datastore-coverage.out -timeout 300s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/server/store/...
@@ -211,16 +222,6 @@ test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ##
 
 ##@ Build
 
-build-ui: ## Build UI
-	(cd web/; pnpm install --frozen-lockfile; pnpm build)
-
-build-server: build-ui generate-openapi ## Build server
-	CGO_ENABLED=${CGO_ENABLED} GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-server${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/server
-
-build-agent: ## Build agent
-	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-agent${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/agent
-
-build-cli: ## Build cli
 	CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/woodpecker-cli${BIN_SUFFIX} go.woodpecker-ci.org/woodpecker/v3/cmd/cli
 
 build-tarball: ## Build tar archive

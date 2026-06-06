@@ -1,4 +1,27 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 50%  # 整体覆盖率目标
+        threshold: 1%  # 允许下降 1%
+        informational: false  # 设置为 false 时，如果不满足目标会失败
+    patch:
+      default:
+        target: 70%  # 新增代码覆盖率目标
+        threshold: 1%  # 允许下降 1%
+        informational: false
+    changes: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+  require_base: false
+  require_head: true
+
 ignore:
-  - '**/mocks/mock_*.go'
-  - '**/fixtures/*.go'
-  - 'e2e/**/*.go'
+  - "**/vendor/**"
+  - "**/test/**"
+  - "**/testdata/**"
+  - "**/*.pb.go"
+  - "**/proto/**"

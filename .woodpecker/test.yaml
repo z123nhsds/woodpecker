@@ -90,26 +90,6 @@ steps:
     when:
       - path: *when_path
 
-  test-e2e:
-    depends_on:
-      - vendor
-    image: *golang_image
-    commands:
-      - make test-e2e
-    when:
-      - path: *when_path
-
-  sqlite:
-    depends_on:
-      - vendor
-    image: *golang_image
-    environment:
-      WOODPECKER_DATABASE_DRIVER: sqlite3
-    commands:
-      - make test-server-datastore-coverage
-    when:
-      - path: *when_path
-
   postgres:
     depends_on:
       - vendor

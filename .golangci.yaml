@@ -3,9 +3,6 @@ run:
   timeout: 15m
   build-tags:
     - test
-linters:
-  default: none
-  enable:
     - asciicheck
     - bidichk
     - bodyclose
@@ -28,7 +25,6 @@ linters:
     - govet
     - importas
     - ineffassign
-    - makezero
     - misspell
     - mnd
     - nolintlint

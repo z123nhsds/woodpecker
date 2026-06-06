@@ -102,27 +102,6 @@ vendor: ## Update the vendor directory
 	go mod tidy
 	go mod vendor
 
-format: install-gofumpt ## Format source code
-	@gofumpt -extra -w .
-
-.PHONY: clean
-clean: ## Clean build artifacts
-	go clean -i ./...
-	rm -rf build
-	@[ "1" != "$(shell docker image ls woodpecker/make:local -a | wc -l)" ] && docker image rm woodpecker/make:local || echo no docker image to clean
-
-.PHONY: clean-all
-clean-all: clean ## Clean all artifacts
-	rm -rf ${DIST_DIR} web/dist docs/build docs/node_modules web/node_modules
-	# delete generated
-	rm -rf docs/docs/40-cli.md docs/openapi.json
-
-.PHONY: generate
-generate: install-mockery generate-openapi ## Run all code generations
-	mockery
-	CGO_ENABLED=0 go generate ./...
-
-generate-openapi: ## Run openapi code generation and format it
 	CGO_ENABLED=0 go run github.com/swaggo/swag/cmd/swag fmt --exclude rpc/proto
 	CGO_ENABLED=0 go generate cmd/server/openapi.go
 

@@ -1,0 +1,53 @@
+# Woodpecker Codecov Configuration
+# See https://docs.codecov.com/docs/codecovyml-reference for more options
+
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"  # Acceptable coverage range
+  
+  status:
+    # Overall project coverage
+    project:
+      default:
+        target: 43%  # Current baseline coverage
+        threshold: 1%  # Allow 1% drop
+        if_not_found: success
+        
+    # Pull request changes coverage
+    patch:
+      default:
+        target: 70%  # Require 70% coverage for new code
+        if_not_found: success
+
+parsers:
+  gcov:
+    branch_detection:
+      conditional: true
+      loop: true
+      method: false
+      macro: false
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+flags:
+  # Server package flags
+  server:
+    paths:
+      - server/
+  # Agent package flags
+  agent:
+    paths:
+      - agent/
+  # Pipeline package flags
+  pipeline:
+    paths:
+      - pipeline/

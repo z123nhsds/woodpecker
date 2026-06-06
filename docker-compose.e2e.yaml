@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  # MySQL Database for E2E Tests
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: woodpecker
+      MYSQL_DATABASE: woodpecker
+      MYSQL_USER: woodpecker
+      MYSQL_PASSWORD: woodpecker
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uwoodpecker", "-pwoodpecker"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+    networks:
+      - e2e
+
+  # Woodpecker Server for E2E Tests
+  woodpecker-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    environment:
+      WOODPECKER_OPEN: true
+      WOODPECKER_ADMIN: woodpecker
+      WOODPECKER_HOST: http://woodpecker-server:8000
+      WOODPECKER_GITEA: true
+      WOODPECKER_GITEA_URL: http://gitea:3000
+      WOODPECKER_GITEA_CLIENT: woodpecker
+      WOODPECKER_GITEA_SECRET: woodpecker
+      WOODPECKER_AGENT_SECRET: woodpecker-secret
+      WOODPECKER_DATABASE_DRIVER: mysql
+      WOODPECKER_DATABASE_DATASOURCE: woodpecker:woodpecker@tcp(mysql:3306)/woodpecker?parseTime=true
+      WOODPECKER_LOG_LEVEL: debug
+    ports:
+      - "8000:8000"
+    volumes:
+      - woodpecker-data:/var/lib/woodpecker/
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8000/healthz"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    networks:
+      - e2e
+
+  # Woodpecker Agent for E2E Tests
+  woodpecker-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    environment:
+      WOODPECKER_SERVER: woodpecker-server:9000
+      WOODPECKER_AGENT_SECRET: woodpecker-secret
+      WOODPECKER_MAX_WORKFLOWS: 2
+      WOODPECKER_LOG_LEVEL: debug
+      WOODPECKER_BACKEND_DOCKER_NETWORK: woodpecker_e2e
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      woodpecker-server:
+        condition: service_healthy
+    networks:
+      - e2e
+
+  # Gitea for Testing Integration (optional, for full flow testing)
+  gitea:
+    image: gitea/gitea:1.21
+    environment:
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__DOMAIN: gitea
+      GITEA__server__ROOT_URL: http://gitea:3000
+    volumes:
+      - gitea-data:/data
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:3000/api/healthz"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    networks:
+      - e2e
+
+  # E2E Test Runner
+  e2e-runner:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dev
+    environment:
+      WOODPECKER_SERVER_URL: http://woodpecker-server:8000
+      WOODPECKER_AGENT_URL: http://woodpecker-server:9000
+      WOODPECKER_ADMIN_USER: woodpecker
+      WOODPECKER_ADMIN_PASSWORD: woodpecker
+      WOODPECKER_GITEA_URL: http://gitea:3000
+      TEST_TIMEOUT: 300s
+    volumes:
+      - ./e2e:/app/e2e
+    depends_on:
+      woodpecker-agent:
+        condition: service_started
+    command: go test -v -cover -timeout 300s -tags 'test' ./e2e/...
+    networks:
+      - e2e
+
+networks:
+  e2e:
+    name: woodpecker_e2e
+
+volumes:
+  mysql-data:
+  woodpecker-data:
+  gitea-data:

@@ -408,4 +408,44 @@ man-server: ## Generate man pages for server
 .PHONY: man
 man: man-cli man-agent man-server ## Generate all man pages
 
+# E2E Testing
+.PHONY: e2e-up
+e2e-up: ## Start E2E test environment (server, agent, mysql)
+	docker-compose -f docker-compose.e2e.yaml up -d mysql woodpecker-server woodpecker-agent gitea
+	@echo "Waiting for services to be ready..."
+	@sleep 30
+	@echo "E2E test environment started successfully!"
+
+.PHONY: e2e-down
+e2e-down: ## Stop and remove E2E test environment
+	docker-compose -f docker-compose.e2e.yaml down -v
+
+.PHONY: e2e-restart
+e2e-restart: e2e-down e2e-up ## Restart E2E test environment
+
+.PHONY: e2e-test
+e2e-test: ## Run E2E tests against the test environment
+	@echo "Running E2E tests..."
+	docker-compose -f docker-compose.e2e.yaml up --build --abort-on-container-exit --exit-code-from e2e-runner e2e-runner
+
+.PHONY: e2e-run
+e2e-run: ## Start E2E environment and run full test suite
+	@echo "Starting E2E test suite..."
+	make e2e-up
+	make e2e-test
+	make e2e-down
+
+.PHONY: e2e-logs
+e2e-logs: ## Show logs from E2E services
+	docker-compose -f docker-compose.e2e.yaml logs -f
+
+.PHONY: e2e-build
+e2e-build: ## Build E2E services images
+	docker-compose -f docker-compose.e2e.yaml build
+
+.PHONY: test-e2e-local
+test-e2e-local: ## Run E2E tests locally without Docker Compose
+	@echo "Running E2E tests locally..."
+	go test -v -cover -timeout 300s -tags 'test' ./e2e/...
+
 endif

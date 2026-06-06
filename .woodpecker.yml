@@ -1,0 +1,114 @@
+# Woodpecker CI Configuration
+# See https://woodpecker-ci.org/docs/usage/intro for more information
+
+when:
+  - event: [push, pull_request]
+
+steps:
+  # Linting
+  lint:
+    image: golang:1.26
+    commands:
+      - make install-golangci-lint
+      - make lint
+    environment:
+      - CGO_ENABLED=0
+
+  # Test Server
+  test-server:
+    image: golang:1.26
+    commands:
+      - make test-server
+    environment:
+      - CGO_ENABLED=0
+    when:
+      path:
+        include:
+          - "server/**/*"
+          - "go.mod"
+          - "go.sum"
+          - "Makefile"
+
+  # Test Agent
+  test-agent:
+    image: golang:1.26
+    commands:
+      - make test-agent
+    environment:
+      - CGO_ENABLED=0
+    when:
+      path:
+        include:
+          - "agent/**/*"
+          - "go.mod"
+          - "go.sum"
+          - "Makefile"
+
+  # Test Pipeline
+  test-pipeline:
+    image: golang:1.26
+    commands:
+      - go test -v -cover -coverprofile=pipeline-coverage.out -tags 'test' ./pipeline/frontend/yaml/compiler/... ./pipeline/...
+    environment:
+      - CGO_ENABLED=0
+    when:
+      path:
+        include:
+          - "pipeline/**/*"
+          - "go.mod"
+          - "go.sum"
+          - "Makefile"
+
+  # Collect Coverage
+  coverage:
+    image: golang:1.26
+    commands:
+      # Run all tests and collect coverage
+      - make test
+      # Combine coverage profiles (if needed)
+      - go install github.com/axw/gocov/gocov@latest
+      - go install github.com/AlekSi/gocov-xml@latest
+      - |
+        echo "mode: set" > coverage.out
+        for file in *-coverage.out; do
+          if [ -f "$file" ]; then
+            tail -n +2 "$file" >> coverage.out
+          fi
+        done
+      # Generate coverage report
+      - gocov convert coverage.out | gocov-xml > coverage.xml
+    environment:
+      - CGO_ENABLED=0
+    when:
+      branch: [main, master, develop, release/*]
+      event: [push, pull_request]
+
+  # Upload to Codecov
+  upload-coverage:
+    image: robertstettner/drone-codecov
+    secrets: [codecov_token]
+    commands:
+      - /bin/drone-codecov -f coverage.xml -F server -F agent -F pipeline
+    when:
+      branch: [main, master, develop, release/*]
+      event: [push, pull_request]
+      status: success
+
+  # Build and Test
+  build:
+    image: golang:1.26
+    commands:
+      - make build
+    environment:
+      - CGO_ENABLED=0
+
+  # Security Check
+  security:
+    image: golang:1.26
+    commands:
+      - go install github.com/securego/gosec/v2/cmd/gosec@latest
+      - gosec -severity high -confidence high ./...
+    environment:
+      - CGO_ENABLED=0
+    when:
+      event: pull_request

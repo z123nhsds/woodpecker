@@ -1,0 +1,60 @@
+diff --git a/pipeline/frontend/yaml/matrix/matrix.go b/pipeline/frontend/yaml/matrix/matrix.go
+index 09cf43e13..281c75cb6 100644
+--- a/pipeline/frontend/yaml/matrix/matrix.go
++++ b/pipeline/frontend/yaml/matrix/matrix.go
+@@ -68,10 +68,6 @@ func ParseString(data string) ([]Axis, error) {
+ }
+ 
+ func calc(matrix Matrix) []Axis {
+-	// calculate number of permutations and extract the list of tags
+-	// (ie go_version, redis_version, etc)
+-	var perm int
+-	var tags []string
+ 	for k, v := range matrix {
+ 		perm *= len(v)
+ 		if perm == 0 {
+@@ -84,10 +80,6 @@ func calc(matrix Matrix) []Axis {
+ 	var axisList []Axis
+ 
+ 	// for each axis calculate the unique set of values that should be used.
+-	for p := 0; p < perm; p++ {
+-		axis := map[string]string{}
+-		decrease := perm
+-		for i, tag := range tags {
+ 			elems := matrix[tag]
+ 			decrease /= len(elems)
+ 			elem := p / decrease % len(elems)
+@@ -116,12 +108,7 @@ func parse(raw []byte) (Matrix, error) {
+ 		Matrix map[string][]string
+ 	}{}
+ 	if err := xyaml.Unmarshal(raw, &data); err != nil {
+-		return nil, &pipeline_errors.PipelineError{Message: err.Error(), Type: pipeline_errors.PipelineErrorTypeCompiler}
+-	}
+-	return data.Matrix, nil
+-}
+-
+-func parseList(raw []byte) ([]Axis, error) {
++	return axisList
+ 	data := struct {
+ 		Matrix struct {
+ 			Include []Axis
+diff --git a/pipeline/frontend/yaml/types/workflow.go b/pipeline/frontend/yaml/types/workflow.go
+index 463de873c..9895d45b5 100644
+--- a/pipeline/frontend/yaml/types/workflow.go
++++ b/pipeline/frontend/yaml/types/workflow.go
+@@ -16,7 +16,6 @@ package types
+ 
+ import (
+ 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
+-)
+ 
+ type (
+ 	// Workflow defines a workflow configuration.
+@@ -30,7 +29,6 @@ type (
+ 		DependsOn constraint.DependsOn `yaml:"depends_on,omitempty"`
+ 		SkipClone bool                 `yaml:"skip_clone,omitempty"`
+ 		// Deprecated: use when.status. TODO remove in next major.
+-		RunsOn []string `yaml:"runs_on,omitempty"`
+ 	}
+ 
+ 	// Workspace defines a pipeline workspace.

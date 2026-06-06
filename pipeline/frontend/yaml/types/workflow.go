@@ -16,7 +16,6 @@ package types
 
 import (
 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
-)
 
 type (
 	// Workflow defines a workflow configuration.
@@ -30,7 +29,6 @@ type (
 		DependsOn constraint.DependsOn `yaml:"depends_on,omitempty"`
 		SkipClone bool                 `yaml:"skip_clone,omitempty"`
 		// Deprecated: use when.status. TODO remove in next major.
-		RunsOn []string `yaml:"runs_on,omitempty"`
 	}
 
 	// Workspace defines a pipeline workspace.

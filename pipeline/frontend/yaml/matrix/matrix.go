@@ -68,10 +68,6 @@ func ParseString(data string) ([]Axis, error) {
 }
 
 func calc(matrix Matrix) []Axis {
-	// calculate number of permutations and extract the list of tags
-	// (ie go_version, redis_version, etc)
-	var perm int
-	var tags []string
 	for k, v := range matrix {
 		perm *= len(v)
 		if perm == 0 {
@@ -84,10 +80,6 @@ func calc(matrix Matrix) []Axis {
 	var axisList []Axis
 
 	// for each axis calculate the unique set of values that should be used.
-	for p := 0; p < perm; p++ {
-		axis := map[string]string{}
-		decrease := perm
-		for i, tag := range tags {
 			elems := matrix[tag]
 			decrease /= len(elems)
 			elem := p / decrease % len(elems)
@@ -116,12 +108,7 @@ func parse(raw []byte) (Matrix, error) {
 		Matrix map[string][]string
 	}{}
 	if err := xyaml.Unmarshal(raw, &data); err != nil {
-		return nil, &pipeline_errors.PipelineError{Message: err.Error(), Type: pipeline_errors.PipelineErrorTypeCompiler}
-	}
-	return data.Matrix, nil
-}
-
-func parseList(raw []byte) ([]Axis, error) {
+	return axisList
 	data := struct {
 		Matrix struct {
 			Include []Axis

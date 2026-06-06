@@ -1,0 +1,64 @@
+version: '3'
+
+services:
+  mysql:
+    image: docker.io/mysql:9.7.0
+    environment:
+      MYSQL_DATABASE: woodpecker
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot --silent']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  woodpecker-server:
+    image: woodpecker-server:e2e
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server.alpine.multiarch.rootless
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - '8000:8000'
+      - '9000:9000'
+    environment:
+      WOODPECKER_OPEN: 'true'
+      WOODPECKER_HOST: http://localhost:8000
+      WOODPECKER_AGENT_SECRET: e2e-agent-secret
+      WOODPECKER_GRPC_SECRET: e2e-grpc-secret
+      WOODPECKER_DATABASE_DRIVER: mysql
+      WOODPECKER_DATABASE_DATASOURCE: root@tcp(mysql:3306)/woodpecker?parseTime=true
+    healthcheck:
+      test: ['CMD', '/bin/woodpecker-server', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  woodpecker-agent:
+    image: woodpecker-agent:e2e
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent.alpine.multiarch
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
+    depends_on:
+      woodpecker-server:
+        condition: service_healthy
+    environment:
+      WOODPECKER_SERVER: woodpecker-server:9000
+      WOODPECKER_AGENT_SECRET: e2e-agent-secret
+      WOODPECKER_BACKEND: docker
+      WOODPECKER_MAX_WORKFLOWS: '2'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ['CMD', '/bin/woodpecker-agent', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20

@@ -12,6 +12,7 @@ variables:
         # tools updates
         - Makefile
         - 'codecov.yaml'
+        - 'docker-compose.e2e.yaml'
       event: pull_request
 
 when:
@@ -27,8 +28,15 @@ steps:
       - go mod vendor
     when:
       path:
-        - <<: *when_path
         - '.woodpecker/**'
+        - '.woodpecker/test.yaml'
+        - '.golangci.yaml'
+        - '**/*.go'
+        - 'go.*'
+        - 'pipeline/schema/**'
+        - Makefile
+        - 'codecov.yaml'
+        - 'docker-compose.e2e.yaml'
 
   lint-pipeline:
     depends_on:
@@ -135,6 +143,7 @@ steps:
   codecov:
     depends_on:
       - test
+      - test-e2e
       - sqlite
     pull: true
     image: docker.io/woodpeckerci/plugin-codecov:2.3.1

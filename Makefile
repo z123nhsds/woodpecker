@@ -16,6 +16,7 @@ ifeq ($(TARGETOS),windows)
 endif
 
 DIST_DIR ?= dist
+E2E_COMPOSE ?= docker compose -f docker-compose.e2e.yaml
 
 VERSION ?= next
 VERSION_NUMBER ?= 0.0.0
@@ -205,6 +206,25 @@ test-lib: ## Test lib code
 
 test-e2e: ## Test by running yaml config and compare expected result
 	go test -race -cover -coverpkg=./... -coverprofile e2e-coverage.out -timeout 60s -tags 'test $(TAGS)' ./e2e/...
+
+.PHONY: build-e2e-server e2e-compose-up e2e-compose-down e2e-compose-logs test-e2e-compose
+build-e2e-server: build-ui generate-openapi ## Build linux/amd64 server binary used by docker-compose.e2e.yaml
+	mkdir -p ${DIST_DIR}/server/linux_amd64
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -tags '$(TAGS)' -ldflags '${LDFLAGS}' -o ${DIST_DIR}/server/linux_amd64/woodpecker-server go.woodpecker-ci.org/woodpecker/v3/cmd/server
+
+e2e-compose-up: build-e2e-server ## Start MySQL + server + agent for compose-based E2E smoke tests
+	$(E2E_COMPOSE) up -d --build --wait
+
+e2e-compose-down: ## Stop compose-based E2E stack
+	$(E2E_COMPOSE) down -v --remove-orphans
+
+e2e-compose-logs: ## Show compose-based E2E stack logs
+	$(E2E_COMPOSE) logs --no-color
+
+test-e2e-compose: e2e-compose-up ## Verify compose-based E2E services are healthy
+	$(E2E_COMPOSE) exec -T mysql mysqladmin ping -h 127.0.0.1 -uroot --silent
+	$(E2E_COMPOSE) exec -T woodpecker-server /bin/woodpecker-server ping
+	$(E2E_COMPOSE) exec -T woodpecker-agent /bin/woodpecker-agent ping
 
 .PHONY: test
 test: test-agent test-server test-server-datastore test-cli test-lib test-e2e ## Run all tests
@@ -408,4 +428,3 @@ man-server: ## Generate man pages for server
 .PHONY: man
 man: man-cli man-agent man-server ## Generate all man pages
 
-endif

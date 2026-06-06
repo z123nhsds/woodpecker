@@ -18,210 +18,142 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	backend_types "go.woodpecker-ci.org/woodpecker/v3/pipeline/backend/types"
 	"go.woodpecker-ci.org/woodpecker/v3/pipeline/frontend/yaml/constraint"
 )
 
-func TestConvertDAGToStages(t *testing.T) {
-	steps := map[string]*dagCompilerStep{
-		"step1": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "step3"}},
-		},
-		"step2": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "step1"}},
-		},
-		"step3": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "step2"}},
-		},
-	}
-	_, err := convertDAGToStages(steps)
-	assert.ErrorIs(t, err, &ErrStepDependencyCycle{})
-
-	steps = map[string]*dagCompilerStep{
-		"step1": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "step2"}},
-		},
-		"step2": {
-			step: &backend_types.Step{},
-		},
-	}
-	_, err = convertDAGToStages(steps)
-	assert.NoError(t, err)
-
-	steps = map[string]*dagCompilerStep{
-		"a": {
-			step: &backend_types.Step{},
-		},
-		"b": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "a"}},
-		},
-		"c": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "a"}},
-		},
-		"d": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "b"}, {Name: "c"}},
-		},
-	}
-	_, err = convertDAGToStages(steps)
-	assert.NoError(t, err)
-
-	steps = map[string]*dagCompilerStep{
-		"step1": {
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{{Name: "not-existing-step"}},
-		},
-	}
-	_, err = convertDAGToStages(steps)
-	assert.ErrorIs(t, err, &ErrStepMissingDependency{})
-
-	steps = map[string]*dagCompilerStep{
-		"echo env": {
-			position: 0,
-			name:     "echo env",
-			step: &backend_types.Step{
-				UUID:  "01HJDPEW6R7J0JBE3F1T7Q0TYX",
-				Type:  "commands",
-				Name:  "echo env",
-				Image: "bash",
+func TestDAGCompilerCompile(t *testing.T) {
+	tests := []struct {
+		name         string
+		steps        []*dagCompilerStep
+		expected     [][]string
+		expectedErr  error
+		expectedIsDAG bool
+	}{
+		{
+			name: "sequential steps without dependencies",
+			steps: []*dagCompilerStep{
+				newTestDAGStep(0, "lint"),
+				newTestDAGStep(1, "test"),
+				newTestDAGStep(2, "deploy"),
 			},
+			expected: [][]string{{"lint"}, {"test"}, {"deploy"}},
 		},
-		"echo 1": {
-			position:  1,
-			name:      "echo 1",
-			dependsOn: constraint.DependsOn{{Name: "echo env"}, {Name: "echo 2"}},
-			step: &backend_types.Step{
-				UUID:  "01HJDPF770QGRZER8RF79XVS4M",
-				Type:  "commands",
-				Name:  "echo 1",
-				Image: "bash",
+		{
+			name: "groups steps by dependency levels",
+			steps: []*dagCompilerStep{
+				newTestDAGStep(0, "build"),
+				newTestDAGStep(1, "lint"),
+				newTestDAGStep(2, "unit", constraint.DependsOn{{Name: "build"}}),
+				newTestDAGStep(3, "publish", constraint.DependsOn{{Name: "build"}, {Name: "lint"}}),
+				newTestDAGStep(4, "notify", constraint.DependsOn{{Name: "publish"}}),
 			},
+			expected:      [][]string{{"build", "lint"}, {"unit", "publish"}, {"notify"}},
+			expectedIsDAG: true,
 		},
-		"echo 2": {
-			position: 2,
-			name:     "echo 2",
-			step: &backend_types.Step{
-				UUID:  "01HJDPFF5RMEYZW0YTGR1Y1ZR0",
-				Type:  "commands",
-				Name:  "echo 2",
-				Image: "bash",
+		{
+			name: "ignores optional missing dependencies",
+			steps: []*dagCompilerStep{
+				newTestDAGStep(0, "build"),
+				newTestDAGStep(1, "deploy", constraint.DependsOn{{Name: "build"}, {Name: "notify", Optional: true}}),
 			},
+			expected:      [][]string{{"build"}, {"deploy"}},
+			expectedIsDAG: true,
+		},
+		{
+			name: "fails on missing required dependency",
+			steps: []*dagCompilerStep{
+				newTestDAGStep(0, "deploy", constraint.DependsOn{{Name: "build"}}),
+			},
+			expectedErr:  &ErrStepMissingDependency{},
+			expectedIsDAG: true,
+		},
+		{
+			name: "fails on dependency cycle",
+			steps: []*dagCompilerStep{
+				newTestDAGStep(0, "build", constraint.DependsOn{{Name: "deploy"}}),
+				newTestDAGStep(1, "deploy", constraint.DependsOn{{Name: "build"}}),
+			},
+			expectedErr:  &ErrStepDependencyCycle{},
+			expectedIsDAG: true,
 		},
 	}
-	stages, err := convertDAGToStages(steps)
-	assert.NoError(t, err)
-	assert.EqualValues(t, []*backend_types.Stage{{
-		Steps: []*backend_types.Step{{
-			UUID:  "01HJDPEW6R7J0JBE3F1T7Q0TYX",
-			Type:  "commands",
-			Name:  "echo env",
-			Image: "bash",
-		}, {
-			UUID:  "01HJDPFF5RMEYZW0YTGR1Y1ZR0",
-			Type:  "commands",
-			Name:  "echo 2",
-			Image: "bash",
-		}},
-	}, {
-		Steps: []*backend_types.Step{{
-			UUID:  "01HJDPF770QGRZER8RF79XVS4M",
-			Type:  "commands",
-			Name:  "echo 1",
-			Image: "bash",
-		}},
-	}}, stages)
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			compiler := newDAGCompiler(test.steps)
+			assert.Equal(t, test.expectedIsDAG, compiler.isDAG())
+
+			stages, err := compiler.compile()
+			if test.expectedErr != nil {
+				assert.ErrorIs(t, err, test.expectedErr)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, test.expected, dagStageNames(stages))
+		})
+	}
 }
 
-func TestOptionalStepDependency(t *testing.T) {
-	t.Run("missing optional step dep is dropped", func(t *testing.T) {
-		steps := map[string]*dagCompilerStep{
-			"build": {
-				position: 0,
-				name:     "build",
-				step:     &backend_types.Step{Name: "build"},
-			},
-			"deploy": {
-				position: 1,
-				name:     "deploy",
-				step:     &backend_types.Step{Name: "deploy"},
-				dependsOn: constraint.DependsOn{
-					{Name: "build"},
-					{Name: "lint", Optional: true},
-				},
-			},
-		}
-		stages, err := convertDAGToStages(steps)
-		assert.NoError(t, err)
-		assert.Len(t, stages, 2, "should produce 2 stages (build then deploy)")
-	})
+func TestAllDependenciesSatisfied(t *testing.T) {
+	tests := []struct {
+		name      string
+		step      *dagCompilerStep
+		added     map[string]struct{}
+		expected  bool
+	}{
+		{
+			name:     "step without dependencies is ready",
+			step:     newTestDAGStep(0, "build"),
+			added:    map[string]struct{}{},
+			expected: true,
+		},
+		{
+			name:     "step waits for unmet dependency",
+			step:     newTestDAGStep(0, "deploy", constraint.DependsOn{{Name: "build"}}),
+			added:    map[string]struct{}{},
+			expected: false,
+		},
+		{
+			name:     "step is ready once all dependencies are added",
+			step:     newTestDAGStep(0, "deploy", constraint.DependsOn{{Name: "build"}, {Name: "lint"}}),
+			added:    map[string]struct{}{"build": {}, "lint": {}},
+			expected: true,
+		},
+	}
 
-	t.Run("missing required step dep still errors", func(t *testing.T) {
-		steps := map[string]*dagCompilerStep{
-			"deploy": {
-				name: "deploy",
-				step: &backend_types.Step{Name: "deploy"},
-				dependsOn: constraint.DependsOn{
-					{Name: "build"},
-				},
-			},
-		}
-		_, err := convertDAGToStages(steps)
-		assert.ErrorIs(t, err, &ErrStepMissingDependency{})
-	})
-
-	t.Run("present optional step dep is kept", func(t *testing.T) {
-		steps := map[string]*dagCompilerStep{
-			"build": {
-				position: 0,
-				name:     "build",
-				step:     &backend_types.Step{Name: "build"},
-			},
-			"lint": {
-				position: 1,
-				name:     "lint",
-				step:     &backend_types.Step{Name: "lint"},
-			},
-			"deploy": {
-				position: 2,
-				name:     "deploy",
-				step:     &backend_types.Step{Name: "deploy"},
-				dependsOn: constraint.DependsOn{
-					{Name: "build"},
-					{Name: "lint", Optional: true},
-				},
-			},
-		}
-		stages, err := convertDAGToStages(steps)
-		assert.NoError(t, err)
-		assert.Len(t, stages, 2, "build+lint in stage 1, deploy in stage 2")
-		assert.Len(t, stages[0].Steps, 2)
-		assert.Len(t, stages[1].Steps, 1)
-		assert.Equal(t, "deploy", stages[1].Steps[0].Name)
-	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Equal(t, test.expected, allDependenciesSatisfied(test.step, test.added))
+		})
+	}
 }
 
-func TestIsDag(t *testing.T) {
-	steps := []*dagCompilerStep{
-		{
-			step: &backend_types.Step{},
+func newTestDAGStep(position int, name string, dependsOn ...constraint.DependsOn) *dagCompilerStep {
+	step := &dagCompilerStep{
+		position: position,
+		name:     name,
+		step: &backend_types.Step{
+			Name: name,
 		},
 	}
-	c := newDAGCompiler(steps)
-	assert.False(t, c.isDAG())
+	if len(dependsOn) > 0 {
+		step.dependsOn = dependsOn[0]
+	}
+	return step
+}
 
-	steps = []*dagCompilerStep{
-		{
-			step:      &backend_types.Step{},
-			dependsOn: constraint.DependsOn{},
-		},
+func dagStageNames(stages []*backend_types.Stage) [][]string {
+	result := make([][]string, 0, len(stages))
+	for _, stage := range stages {
+		names := make([]string, 0, len(stage.Steps))
+		for _, step := range stage.Steps {
+			names = append(names, step.Name)
+		}
+		result = append(result, names)
 	}
-	c = newDAGCompiler(steps)
-	assert.True(t, c.isDAG())
+	return result
 }

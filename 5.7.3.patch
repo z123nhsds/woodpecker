@@ -1,0 +1,38 @@
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..ecc4c975b 100644
+--- a/Makefile
++++ b/Makefile
+@@ -20,10 +20,6 @@ DIST_DIR ?= dist
+ VERSION ?= next
+ VERSION_NUMBER ?= 0.0.0
+ CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
+-
+-# it's a tagged release
+-ifneq ($(CI_COMMIT_TAG),)
+-	VERSION := $(CI_COMMIT_TAG:v%=%)
+ 	VERSION_NUMBER := ${CI_COMMIT_TAG:v%=%}
+ else
+ 	# append commit-sha to next version
+@@ -156,22 +152,6 @@ install-mockery:
+ 
+ install-protoc-gen-go:
+ 	@hash protoc-gen-go > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/protobuf/cmd/protoc-gen-go@latest; \
+-	fi ; \
+-	hash protoc-gen-go-grpc > /dev/null 2>&1; if [ $$? -ne 0 ]; then \
+-		go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest; \
+-	fi
+-
+-.PHONY: install-tools
+-install-tools: install-golangci-lint install-gofumpt install-addlicense install-mockery install-protoc-gen-go ## Install development tools
+-
+-ui-dependencies: ## Install UI dependencies
+-	(cd web/; pnpm install --frozen-lockfile)
+-
+-##@ Test
+-
+-.PHONY: lint
+-lint: install-golangci-lint ## Lint code
+ 	@echo "Running golangci-lint"
+ 	golangci-lint run
+ 

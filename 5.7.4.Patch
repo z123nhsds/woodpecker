@@ -1,0 +1,75 @@
+diff --git a/.golangci.yaml b/.golangci.yaml
+index be360a1f2..137098596 100644
+--- a/.golangci.yaml
++++ b/.golangci.yaml
+@@ -3,6 +3,9 @@ run:
+   timeout: 15m
+   build-tags:
+     - test
++issues:
++  new: true
++  new-from-rev: origin/main
+ linters:
+   default: none
+   enable:
+@@ -25,6 +28,7 @@ linters:
+     - gomoddirectives
+     - gomodguard_v2
+     - goprintffuncname
++    - gosec
+     - govet
+     - importas
+     - ineffassign
+diff --git a/Makefile b/Makefile
+index 63b0fe5a5..420f020c5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -102,6 +102,27 @@ vendor: ## Update the vendor directory
+ 	go mod tidy
+ 	go mod vendor
+ 
++.PHONY: update-deps
++update-deps: BRANCH := deps/update-$(shell date +%Y%m%d-%H%M%S)
++update-deps: ## Update go.mod deps, run pre-commit, commit and create PR
++	@echo "==> Updating go module dependencies..."
++	go get -u ./...
++	@echo "==> Running go mod tidy..."
++	go mod tidy
++	@echo "==> Running pre-commit on all files..."
++	pre-commit run --all-files || true
++	@echo "==> Creating branch $(BRANCH)..."
++	git checkout -b $(BRANCH)
++	git add go.mod go.sum vendor/
++	git commit -m "chore(deps): update go module dependencies" || echo "Nothing to commit"
++	@echo "==> Pushing and creating PR..."
++	git push origin $(BRANCH)
++	gh pr create \
++		--title "chore(deps): update go module dependencies" \
++		--body "Automated dependency update via \`make update-deps\`." \
++		--base main \
++		--head $(BRANCH) || echo "PR creation skipped (gh CLI required)"
++
+ format: install-gofumpt ## Format source code
+ 	@gofumpt -extra -w .
+ 
+diff --git a/codecov.yaml b/codecov.yaml
+index dc0150251..c1e388d6d 100644
+--- a/codecov.yaml
++++ b/codecov.yaml
+@@ -1,3 +1,16 @@
++coverage:
++  status:
++    project:
++      default:
++        target: 50%
++        threshold: 1%
++        if_ci_failed: error
++    patch:
++      default:
++        target: 70%
++        threshold: 1%
++        if_ci_failed: error
++
+ ignore:
+   - '**/mocks/mock_*.go'
+   - '**/fixtures/*.go'

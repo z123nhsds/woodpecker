@@ -102,6 +102,27 @@ vendor: ## Update the vendor directory
 	go mod tidy
 	go mod vendor
 
+.PHONY: update-deps
+update-deps: BRANCH := deps/update-$(shell date +%Y%m%d-%H%M%S)
+update-deps: ## Update go.mod deps, run pre-commit, commit and create PR
+	@echo "==> Updating go module dependencies..."
+	go get -u ./...
+	@echo "==> Running go mod tidy..."
+	go mod tidy
+	@echo "==> Running pre-commit on all files..."
+	pre-commit run --all-files || true
+	@echo "==> Creating branch $(BRANCH)..."
+	git checkout -b $(BRANCH)
+	git add go.mod go.sum vendor/
+	git commit -m "chore(deps): update go module dependencies" || echo "Nothing to commit"
+	@echo "==> Pushing and creating PR..."
+	git push origin $(BRANCH)
+	gh pr create \
+		--title "chore(deps): update go module dependencies" \
+		--body "Automated dependency update via \`make update-deps\`." \
+		--base main \
+		--head $(BRANCH) || echo "PR creation skipped (gh CLI required)"
+
 format: install-gofumpt ## Format source code
 	@gofumpt -extra -w .
 

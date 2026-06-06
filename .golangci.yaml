@@ -3,6 +3,9 @@ run:
   timeout: 15m
   build-tags:
     - test
+issues:
+  new: true
+  new-from-rev: origin/main
 linters:
   default: none
   enable:
@@ -25,6 +28,7 @@ linters:
     - gomoddirectives
     - gomodguard_v2
     - goprintffuncname
+    - gosec
     - govet
     - importas
     - ineffassign

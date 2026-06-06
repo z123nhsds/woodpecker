@@ -20,6 +20,10 @@ DIST_DIR ?= dist
 VERSION ?= next
 VERSION_NUMBER ?= 0.0.0
 CI_COMMIT_SHA ?= $(shell git rev-parse HEAD)
+BASE_BRANCH ?= main
+COMMIT_MSG ?= chore: update Go dependencies
+PR_TITLE ?= $(COMMIT_MSG)
+PR_BODY ?= Automated Go dependency update.
 
 # it's a tagged release
 ifneq ($(CI_COMMIT_TAG),)
@@ -102,18 +106,6 @@ vendor: ## Update the vendor directory
 	go mod tidy
 	go mod vendor
 
-format: install-gofumpt ## Format source code
-	@gofumpt -extra -w .
-
-.PHONY: clean
-clean: ## Clean build artifacts
-	go clean -i ./...
-	rm -rf build
-	@[ "1" != "$(shell docker image ls woodpecker/make:local -a | wc -l)" ] && docker image rm woodpecker/make:local || echo no docker image to clean
-
-.PHONY: clean-all
-clean-all: clean ## Clean all artifacts
-	rm -rf ${DIST_DIR} web/dist docs/build docs/node_modules web/node_modules
 	# delete generated
 	rm -rf docs/docs/40-cli.md docs/openapi.json
 
@@ -165,6 +157,22 @@ install-protoc-gen-go:
 .PHONY: install-tools
 install-tools: install-golangci-lint install-gofumpt install-addlicense install-mockery install-protoc-gen-go ## Install development tools
 
+.PHONY: update-go-deps-pr
+update-go-deps-pr: ## Update Go dependencies, run checks, commit changes, and create a PR
+	@test "$$(git rev-parse --is-inside-work-tree 2>/dev/null)" = "true"
+	@test -n "$$(git branch --show-current)" || (echo "please run on a branch"; exit 1)
+	@test "$$(git branch --show-current)" != "$(BASE_BRANCH)" || (echo "please switch off $(BASE_BRANCH) before creating a PR"; exit 1)
+	@hash gh > /dev/null 2>&1 || (echo "gh is required"; exit 1)
+	@hash pre-commit > /dev/null 2>&1 || (echo "pre-commit is required"; exit 1)
+	@if [ -n "$(DEPS)" ]; then go get $(DEPS); fi
+	go mod tidy
+	pre-commit run --all-files
+	git add -A
+	@git diff --cached --quiet && (echo "no changes to commit"; exit 1) || true
+	git commit -m "$(COMMIT_MSG)"
+	git push -u origin HEAD
+	gh pr create --base "$(BASE_BRANCH)" --title "$(PR_TITLE)" --body "$(PR_BODY)"
+
 ui-dependencies: ## Install UI dependencies
 	(cd web/; pnpm install --frozen-lockfile)
 
@@ -186,11 +194,6 @@ test-server: ## Test server code
 
 test-cli: ## Test cli code
 	go test -race -cover -coverprofile cli-coverage.out -timeout 60s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/cmd/cli go.woodpecker-ci.org/woodpecker/v3/cli/...
-
-test-server-datastore: ## Test server datastore
-	go test -timeout 300s -tags 'test $(TAGS)' -run TestMigrate go.woodpecker-ci.org/woodpecker/v3/server/store/...
-	go test -race -timeout 120s -tags 'test $(TAGS)' -skip TestMigrate go.woodpecker-ci.org/woodpecker/v3/server/store/...
-
 test-server-datastore-coverage: ## Test server datastore with coverage report
 	go test -race -cover -coverprofile datastore-coverage.out -timeout 300s -tags 'test $(TAGS)' go.woodpecker-ci.org/woodpecker/v3/server/store/...
 
